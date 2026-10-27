@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const KEY = "novy-music-api-key";
 const STORE = "novy-music-state";
@@ -16,6 +16,11 @@ export default function Page() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [current, setCurrent] = useState(null);
+  const [playerMode, setPlayerMode] = useState("video");
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playQueue, setPlayQueue] = useState([]);
+  const playerFrameRef = useRef(null);
   const [favorites, setFavorites] = useState([]);
   const [playlists, setPlaylists] = useState([]);
   const [recent, setRecent] = useState([]);
@@ -183,13 +188,68 @@ export default function Page() {
     } finally { setLoading(false); }
   }
 
-  function play(track) {
-    const playedAt = new Date().toISOString();
+  function sendPlayerCommand(func, args = []) {
+    const frame = playerFrameRef.current;
+    if (!frame?.contentWindow) return;
+    frame.contentWindow.postMessage(
+      JSON.stringify({ event: "command", func, args }),
+      "https://www.youtube-nocookie.com"
+    );
+  }
+
+  function handlePlayerFrameLoad() {
+    // Wait for the embedded player API to finish initializing before applying speed.
+    window.setTimeout(() => {
+      sendPlayerCommand("setPlaybackRate", [Number(playbackRate)]);
+    }, 500);
+  }
+
+  function play(track, queue = []) {
+    const sourceQueue = Array.isArray(queue) && queue.length ? queue : [track];
+    const uniqueQueue = sourceQueue.filter((item, index, all) =>
+      item?.id && all.findIndex(candidate => candidate?.id === item.id) === index
+    );
+    if (!uniqueQueue.some(item => item.id === track.id)) uniqueQueue.unshift(track);
+    setPlayQueue(uniqueQueue);
     setCurrent(track);
+    setPlayerMode("video");
+    setIsPlaying(true);
+    const playedAt = new Date().toISOString();
     setRecent(old => [
       { ...track, playedAt, historyId: `${track.id}-live-${Date.now()}`, importedFromTakeout: false },
       ...old.filter(x => x.id !== track.id)
     ].slice(0, 500));
+  }
+
+  function skipTrack(direction) {
+    if (!current || !playQueue.length) return;
+    const index = playQueue.findIndex(track => track.id === current.id);
+    const next = playQueue[index + direction];
+    if (next) play(next, playQueue);
+  }
+
+  function togglePlayback() {
+    if (!current) return;
+    if (playerMode !== "video") {
+      setPlayerMode("video");
+      setIsPlaying(true);
+      return;
+    }
+    const nextPlaying = !isPlaying;
+    sendPlayerCommand(nextPlaying ? "playVideo" : "pauseVideo");
+    setIsPlaying(nextPlaying);
+  }
+
+  function togglePlayerMode(mode) {
+    if (mode === playerMode) return;
+    if (mode === "cover") {
+      sendPlayerCommand("pauseVideo");
+      setIsPlaying(false);
+      setPlayerMode("cover");
+    } else {
+      setPlayerMode("video");
+      setIsPlaying(true);
+    }
   }
 
   async function importYoutubeHistory(event) {
@@ -545,8 +605,8 @@ export default function Page() {
   const quickSearch = value => { setQuery(value); void searchMusic(value); };
   function trackRows(list) {
     return <div className="track-list">{list.map((track, i) => <div className="track" key={track.historyId || `${track.id}-${i}`}>
-      <button className="thumb" onClick={() => play(track)}>{track.thumbnail ? <img src={track.thumbnail} alt="" /> : "♫"}<i>▶</i></button>
-      <button className="track-info" onClick={() => play(track)}><b title={track.title}>{track.title}</b><small>{track.channel}{track.playedAt ? ` · ${new Date(track.playedAt).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" })}` : ""}</small></button>
+      <button className="thumb" onClick={() => play(track, list)}>{track.thumbnail ? <img src={track.thumbnail} alt="" /> : "♫"}<i>▶</i></button>
+      <button className="track-info" onClick={() => play(track, list)}><b title={track.title}>{track.title}</b><small>{track.channel}{track.playedAt ? ` · ${new Date(track.playedAt).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" })}` : ""}</small></button>
       <button className={isFavorite(track) ? "action liked" : "action"} onClick={() => toggleFavorite(track)} title="Polub">{isFavorite(track) ? "♥" : "♡"}</button>
       <button className="action" onClick={() => addToPlaylist(track)} title="Dodaj do playlisty">＋</button>
       <button className="action ext" onClick={() => window.open(`https://www.youtube.com/watch?v=${track.id}`, "_blank", "noopener,noreferrer")} title="Otwórz na YouTube">↗</button>
@@ -590,12 +650,12 @@ export default function Page() {
               {[0, 1, 2, 3].map(item => <div className="home-hit-skeleton" key={item}><div /><span /><span /></div>)}
             </div> : recommendations.length ? <div className="home-hits-row">
               {recommendations.slice(0, 12).map(track => <article className="home-hit" key={track.historyId || track.id}>
-                <button className="home-hit-cover" onClick={() => play(track)} aria-label={`Odtwórz ${track.title}`}>
+                <button className="home-hit-cover" onClick={() => play(track, recommendations)} aria-label={`Odtwórz ${track.title}`}>
                   {track.thumbnail ? <img src={track.thumbnail} alt="" loading="lazy" /> : <span>♫</span>}
                   <i>▶</i>
                 </button>
                 <div className="home-hit-details">
-                  <button className="home-hit-title" onClick={() => play(track)} title={track.title}>{track.title}</button>
+                  <button className="home-hit-title" onClick={() => play(track, recommendations)} title={track.title}>{track.title}</button>
                   <p>{track.channel || "YouTube"}</p>
                   {track.recommendationReason && <small>{track.recommendationReason}</small>}
                 </div>
@@ -623,12 +683,12 @@ export default function Page() {
           {recommendationError && <div className="recommendation-message">{recommendationError}{!apiKey && <button onClick={() => { setDraftKey(apiKey); setView("settings"); }}>Otwórz ustawienia ↗</button>}</div>}
           {recommendations.length > 0 && <div className="recommendation-grid">
             {recommendations.map(track => <article className="recommendation-card" key={track.historyId || track.id}>
-              <button className="recommendation-thumbnail" onClick={() => play(track)} aria-label={`Odtwórz ${track.title}`}>
+              <button className="recommendation-thumbnail" onClick={() => play(track, recommendations)} aria-label={`Odtwórz ${track.title}`}>
                 {track.thumbnail ? <img src={track.thumbnail} alt="" loading="lazy" /> : <span>♫</span>}
                 <i>▶</i>
               </button>
               <div className="recommendation-card-body">
-                <div className="recommendation-text"><button className="recommendation-title" onClick={() => play(track)} title={track.title}>{track.title}</button><p>{track.channel || "YouTube"}</p><small className="recommendation-reason">{track.recommendationReason}</small></div>
+                <div className="recommendation-text"><button className="recommendation-title" onClick={() => play(track, recommendations)} title={track.title}>{track.title}</button><p>{track.channel || "YouTube"}</p><small className="recommendation-reason">{track.recommendationReason}</small></div>
                 <div className="recommendation-actions">
                   <button className={isFavorite(track) ? "action liked" : "action"} onClick={() => toggleFavorite(track)} title="Polub">{isFavorite(track) ? "♥" : "♡"}</button>
                   <button className="action" onClick={() => addToPlaylist(track)} title="Dodaj do playlisty">＋</button>
@@ -685,8 +745,36 @@ export default function Page() {
         <footer>Novy Music · YouTube Data API · Oficjalny odtwarzacz YouTube</footer>
       </section>
 
-      <aside className="player"><small>TERAZ ODTWARZANE</small><h2>Odtwarzacz</h2>
-        {current ? <><div className="video"><iframe key={current.id} src={`https://www.youtube-nocookie.com/embed/${current.id}?autoplay=1&rel=0&playsinline=1`} title={current.title} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen /></div><h3>{current.title}</h3><small>{current.channel}</small><div className="controls"><button onClick={() => { const i = results.findIndex(t => t.id === current.id); if (i > 0) play(results[i-1]); }}>◀◀</button><button onClick={() => { const i = results.findIndex(t => t.id === current.id); if (i >= 0 && i < results.length-1) play(results[i+1]); }}>▶▶</button><button onClick={() => toggleFavorite(current)}>{isFavorite(current) ? "♥" : "♡"}</button><button onClick={() => addToPlaylist(current)}>＋ Playlista</button></div><p className="warning">Oficjalny odtwarzacz YouTube — reklamy mogą się pojawić.</p></> : <div className="empty"><div>♫</div><h3>Muzyka czeka</h3><p>Wyszukaj i wybierz utwór.</p></div>}
+      <aside className="player"><small className="player-kicker">TERAZ ODTWARZANE</small><h2>Odtwarzacz</h2>
+        {current ? <>
+          <div className="player-mode-switch" role="group" aria-label="Widok odtwarzacza">
+            <button className={playerMode === "cover" ? "active" : ""} onClick={() => togglePlayerMode("cover")} aria-pressed={playerMode === "cover"}>▧ Okładka</button>
+            <button className={playerMode === "video" ? "active" : ""} onClick={() => togglePlayerMode("video")} aria-pressed={playerMode === "video"}>▶ Wideo</button>
+          </div>
+          {playerMode === "cover" ? <div className="player-cover">
+            {current.thumbnail ? <img src={current.thumbnail} alt={`Okładka: ${current.title}`} /> : <div className="player-cover-fallback">♫</div>}
+            <div className="player-cover-overlay"><button onClick={togglePlayback}>▶ Odtwórz wideo</button></div>
+          </div> : <div className="video"><iframe ref={playerFrameRef} key={current.id} id="novy-youtube-player" src={`https://www.youtube-nocookie.com/embed/${current.id}?autoplay=1&controls=1&rel=0&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(typeof window !== "undefined" ? window.location.origin : "https://music.novydev.pl")}`} title={current.title} onLoad={handlePlayerFrameLoad} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen /></div>}
+          <div className="player-track-meta"><h3>{current.title}</h3><small>{current.channel || "YouTube"}</small></div>
+          <div className="player-control-dock">
+            <div className="player-transport">
+              <button className="player-skip" onClick={() => skipTrack(-1)} disabled={playQueue.findIndex(track => track.id === current.id) <= 0} title="Poprzedni utwór" aria-label="Poprzedni utwór">⏮</button>
+              <button className="player-play-pause" onClick={togglePlayback} title={playerMode === "cover" ? "Otwórz wideo i odtwórz" : isPlaying ? "Wstrzymaj" : "Odtwórz"} aria-label={playerMode === "cover" ? "Otwórz wideo i odtwórz" : isPlaying ? "Wstrzymaj" : "Odtwórz"}>{playerMode === "video" && isPlaying ? "Ⅱ" : "▶"}</button>
+              <button className="player-skip" onClick={() => skipTrack(1)} disabled={playQueue.findIndex(track => track.id === current.id) < 0 || playQueue.findIndex(track => track.id === current.id) >= playQueue.length - 1} title="Następny utwór" aria-label="Następny utwór">⏭</button>
+            </div>
+            <div className="player-control-tools">
+              <label className="player-speed"><span>Prędkość</span><select value={playbackRate} onChange={event => { const rate = Number(event.target.value); setPlaybackRate(rate); if (playerMode === "video") sendPlayerCommand("setPlaybackRate", [rate]); }} aria-label="Prędkość odtwarzania">
+                <option value={0.5}>0,5×</option><option value={0.75}>0,75×</option><option value={1}>1×</option><option value={1.25}>1,25×</option><option value={1.5}>1,5×</option><option value={1.75}>1,75×</option><option value={2}>2×</option>
+              </select></label>
+              <div className="player-secondary-actions">
+                <button onClick={() => toggleFavorite(current)} title={isFavorite(current) ? "Usuń z polubionych" : "Polub"} aria-label="Polub">{isFavorite(current) ? "♥" : "♡"}</button>
+                <button onClick={() => addToPlaylist(current)} title="Dodaj do playlisty" aria-label="Dodaj do playlisty">＋</button>
+              </div>
+            </div>
+          </div>
+          {playerMode === "cover" && <p className="player-mode-note">Tryb okładki wstrzymuje wideo. Aby odtwarzać utwór, przełącz na „Wideo”.</p>}
+          <p className="warning">Oficjalny odtwarzacz YouTube — reklamy mogą się pojawić.</p>
+        </> : <div className="empty"><div>♫</div><h3>Muzyka czeka</h3><p>Wyszukaj i wybierz utwór.</p></div>}
         <small className="note">Playlisty zapisane w tej przeglądarce.</small>
       </aside>
     </div>
