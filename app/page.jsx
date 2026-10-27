@@ -27,6 +27,7 @@ export default function Page() {
   const [selectedYtPlaylist, setSelectedYtPlaylist] = useState(null);
   const [ytLoading, setYtLoading] = useState(false);
   const [ytError, setYtError] = useState("");
+  const [historyImportMessage, setHistoryImportMessage] = useState("");
 
   useEffect(() => {
     const k = localStorage.getItem(KEY) || "";
@@ -163,8 +164,105 @@ export default function Page() {
   }
 
   function play(track) {
+    const playedAt = new Date().toISOString();
     setCurrent(track);
-    setRecent(old => [track, ...old.filter(x => x.id !== track.id)].slice(0, 15));
+    setRecent(old => [
+      { ...track, playedAt, historyId: `${track.id}-live-${Date.now()}`, importedFromTakeout: false },
+      ...old.filter(x => x.id !== track.id)
+    ].slice(0, 500));
+  }
+
+  async function importYoutubeHistory(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setHistoryImportMessage("");
+    try {
+      const parsed = JSON.parse(await file.text());
+      const records = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.items)
+          ? parsed.items
+          : Array.isArray(parsed?.activity)
+            ? parsed.activity
+            : null;
+      if (!records) throw new Error("To nie wygląda na plik historii YouTube w formacie JSON.");
+
+      const getVideoId = value => {
+        if (typeof value !== "string") return "";
+        try {
+          const url = new URL(value);
+          const id = url.searchParams.get("v");
+          if (id && /^[a-zA-Z0-9_-]{11}$/.test(id)) return id;
+          const match = url.pathname.match(/\/(?:shorts|embed|live)\/([a-zA-Z0-9_-]{11})/);
+          if (match) return match[1];
+          if (url.hostname === "youtu.be") {
+            const shortId = url.pathname.slice(1).split("/")[0];
+            if (/^[a-zA-Z0-9_-]{11}$/.test(shortId)) return shortId;
+          }
+        } catch { /* ignore malformed URLs */ }
+        return "";
+      };
+
+      const usable = records.map((entry, index) => {
+        const url = entry?.titleUrl || entry?.url || "";
+        const id = getVideoId(url);
+        if (!id) return null;
+        const title = String(entry.title || "Utwór z YouTube")
+          .replace(/^(watched|played|listened to|obejrzano|odtworzono|słuchano|sluchano)\s*/i, "")
+          .trim() || "Utwór z YouTube";
+        const channel = Array.isArray(entry.subtitles)
+          ? entry.subtitles.map(x => x?.name).filter(Boolean).join(", ")
+          : "";
+        const playedAt = entry.time && !Number.isNaN(Date.parse(entry.time))
+          ? new Date(entry.time).toISOString()
+          : "";
+        const products = Array.isArray(entry.products) ? entry.products.join(" ") : "";
+        const marker = `${entry.header || ""} ${products} ${url}`;
+        return {
+          id,
+          title,
+          channel: channel || "YouTube",
+          thumbnail: `https://i.ytimg.com/vi/${id}/mqdefault.jpg`,
+          playedAt,
+          historyId: `takeout-${id}-${playedAt || index}`,
+          importedFromTakeout: true,
+          __musicMarked: /youtube\s*music|music\.youtube\.com/i.test(marker),
+          __index: index,
+        };
+      }).filter(Boolean);
+
+      if (!usable.length) {
+        throw new Error("Nie znaleziono utworów z linkiem do filmu. Wybierz watch-history.json z Google Takeout.");
+      }
+
+      const markedMusic = usable.filter(item => item.__musicMarked);
+      const selected = markedMusic.length ? markedMusic : usable;
+      const imported = selected
+        .sort((a, b) => (Date.parse(b.playedAt) || 0) - (Date.parse(a.playedAt) || 0) || b.__index - a.__index)
+        .slice(0, 500)
+        .map(({ __musicMarked, __index, ...track }) => track);
+
+      setRecent(old => {
+        const keptLocal = old.filter(track => !track.importedFromTakeout);
+        const uniqueLocal = new Map(keptLocal.map(track => [track.historyId || track.id, track]));
+        const merged = [...uniqueLocal.values(), ...imported];
+        const seenImported = new Set();
+        const unique = merged.filter(track => {
+          if (!track.importedFromTakeout) return true;
+          if (seenImported.has(track.historyId)) return false;
+          seenImported.add(track.historyId);
+          return true;
+        });
+        return unique
+          .sort((a, b) => (Date.parse(b.playedAt) || 0) - (Date.parse(a.playedAt) || 0))
+          .slice(0, 500);
+      });
+      setHistoryImportMessage(`Zaimportowano ${imported.length} wpisów z historii. Dane zostały w tej przeglądarce.`);
+    } catch (e) {
+      setHistoryImportMessage(e?.message || "Nie udało się odczytać pliku historii.");
+    } finally {
+      event.target.value = "";
+    }
   }
   const isFavorite = track => favorites.some(x => x.id === track.id);
   function toggleFavorite(track) {
@@ -206,9 +304,9 @@ export default function Page() {
   const pageTitle = ({ home: "Twoja muzyka. Twój rytm.", search: "Wyniki wyszukiwania", liked: "Polubione", recent: "Ostatnio odtwarzane", library: "Biblioteka", settings: "Ustawienia", discover: "Odkrywaj", youtube: selectedYtPlaylist?.title || "Moje YouTube" })[view] || playlist?.name || "Playlista";
   const quickSearch = value => { setQuery(value); void searchMusic(value); };
   function trackRows(list) {
-    return <div className="track-list">{list.map((track, i) => <div className="track" key={track.id}>
+    return <div className="track-list">{list.map((track, i) => <div className="track" key={track.historyId || `${track.id}-${i}`}>
       <button className="thumb" onClick={() => play(track)}>{track.thumbnail ? <img src={track.thumbnail} alt="" /> : "♫"}<i>▶</i></button>
-      <button className="track-info" onClick={() => play(track)}><b title={track.title}>{track.title}</b><small>{track.channel}</small></button>
+      <button className="track-info" onClick={() => play(track)}><b title={track.title}>{track.title}</b><small>{track.channel}{track.playedAt ? ` · ${new Date(track.playedAt).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" })}` : ""}</small></button>
       <button className={isFavorite(track) ? "action liked" : "action"} onClick={() => toggleFavorite(track)} title="Polub">{isFavorite(track) ? "♥" : "♡"}</button>
       <button className="action" onClick={() => addToPlaylist(track)} title="Dodaj do playlisty">＋</button>
       <button className="action ext" onClick={() => window.open(`https://www.youtube.com/watch?v=${track.id}`, "_blank", "noopener,noreferrer")} title="Otwórz na YouTube">↗</button>
@@ -276,7 +374,12 @@ export default function Page() {
           </button>)}
           {selectedYtPlaylist && <><p className="results-head">{selectedYtPlaylist.title}</p>{ytLoading ? <p className="hint">Pobieram utwory…</p> : trackRows(ytItems)}{!ytLoading && !ytItems.length && !ytError && <p className="hint">Ta playlista nie zawiera dostępnych filmów.</p>}</>}
         </div>}
-        {["search", "liked", "recent", "playlist", "library"].includes(view) && (view === "library" ? <div className="library">{[{name:"Polubione", count:favorites.length, go:()=>setView("liked")},{name:"Ostatnie",count:recent.length,go:()=>setView("recent")},...playlists.map(p=>({name:p.name,count:p.tracks.length,go:()=>{setPlaylistId(p.id);setView("playlist")}}))].map(x=><button key={x.name} onClick={x.go}><b>{x.name}</b><small>{x.count} utworów　›</small></button>)}<button onClick={createPlaylist}>＋ Nowa playlista</button></div> : <><p className="results-head">{view === "search" ? `Wyniki: ${term}` : `${items.length} utworów`}</p>{error && <p className="error">{error}</p>}{loading && <p className="hint">Szukam w YouTube…</p>}{trackRows(items)}{view === "search" && nextToken && !loading && <button className="more" onClick={() => searchMusic(term, nextToken, true)}>Pokaż więcej</button>}{["liked","recent","playlist"].includes(view) && !items.length && <p className="hint">Lista jest pusta.</p>}</>)}
+        {["search", "liked", "recent", "playlist", "library"].includes(view) && (view === "library" ? <div className="library">{[{name:"Polubione", count:favorites.length, go:()=>setView("liked")},{name:"Ostatnie",count:recent.length,go:()=>setView("recent")},...playlists.map(p=>({name:p.name,count:p.tracks.length,go:()=>{setPlaylistId(p.id);setView("playlist")}}))].map(x=><button key={x.name} onClick={x.go}><b>{x.name}</b><small>{x.count} utworów　›</small></button>)}<button onClick={createPlaylist}>＋ Nowa playlista</button></div> : <>{view === "recent" && <section className="history-import">
+          <div className="history-import-copy"><b>Historia YouTube Music</b><p>Importuj historię słuchania z Google Takeout. Plik jest przetwarzany lokalnie w tej przeglądarce — nie wysyłamy go na serwer.</p></div>
+          <div className="history-import-actions"><a href="https://takeout.google.com/" target="_blank" rel="noreferrer">Pobierz historię w Google Takeout ↗</a><label htmlFor="youtube-history-file" className="history-import-button">＋ Importuj watch-history.json</label><input id="youtube-history-file" className="history-file" type="file" accept=".json,application/json" onChange={importYoutubeHistory} /></div>
+          {historyImportMessage && <p className="history-import-status" role="status">{historyImportMessage}</p>}
+          <p className="history-import-note">W Google Takeout wybierz „YouTube i YouTube Music”, następnie „historia” i format JSON. Po imporcie do 500 najnowszych wpisów znajdzie się na liście „Ostatnie”. Oficjalne API nie udostępnia historii na żywo.</p>
+        </section>}<p className="results-head">{view === "search" ? `Wyniki: ${term}` : `${items.length} utworów`}</p>{error && <p className="error">{error}</p>}{loading && <p className="hint">Szukam w YouTube…</p>}{trackRows(items)}{view === "search" && nextToken && !loading && <button className="more" onClick={() => searchMusic(term, nextToken, true)}>Pokaż więcej</button>}{["liked","recent","playlist"].includes(view) && !items.length && <p className="hint">Lista jest pusta.</p>}</>)}
         <footer>Novy Music · YouTube Data API · Oficjalny odtwarzacz YouTube</footer>
       </section>
 
