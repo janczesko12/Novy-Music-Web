@@ -9,8 +9,21 @@ function noStoreHeaders(extra = {}) {
   return { "Cache-Control": "private, no-store, max-age=0", ...extra };
 }
 
+// Login and browser chrome must be able to load the branding without an active session.
+// Keep this allowlist narrow so the rest of the private app remains protected.
+const PUBLIC_BRAND_ASSETS = new Set([
+  "/novy-music-logo.webp",
+  "/novy-music-mark.webp",
+  "/icon.png",
+  "/apple-icon.png",
+]);
+
 export async function middleware(request) {
   const { pathname, search } = request.nextUrl;
+
+  if (PUBLIC_BRAND_ASSETS.has(pathname) && ["GET", "HEAD"].includes(request.method)) {
+    return NextResponse.next();
+  }
 
   // The login screen and its password endpoint must be reachable before a session exists.
   if (pathname === "/api/site-auth/login" || pathname === "/api/auth/google/callback") {
