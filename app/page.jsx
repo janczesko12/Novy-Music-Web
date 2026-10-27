@@ -32,6 +32,8 @@ export default function Page() {
   const [recommendationFilter, setRecommendationFilter] = useState("Dla Ciebie");
   const [recommendationLoading, setRecommendationLoading] = useState(false);
   const [recommendationError, setRecommendationError] = useState("");
+  const [recommendationProfile, setRecommendationProfile] = useState("");
+  const [dismissedRecommendations, setDismissedRecommendations] = useState([]);
 
   useEffect(() => {
     const k = localStorage.getItem(KEY) || "";
@@ -42,13 +44,14 @@ export default function Page() {
       setFavorites(saved.favorites || []);
       setPlaylists(saved.playlists || []);
       setRecent(saved.recent || []);
+      setDismissedRecommendations(saved.dismissedRecommendations || []);
     } catch { /* ignore damaged local storage */ }
     setHydrated(true);
   }, []);
 
   useEffect(() => {
-    if (hydrated) localStorage.setItem(STORE, JSON.stringify({ favorites, playlists, recent }));
-  }, [hydrated, favorites, playlists, recent]);
+    if (hydrated) localStorage.setItem(STORE, JSON.stringify({ favorites, playlists, recent, dismissedRecommendations }));
+  }, [hydrated, favorites, playlists, recent, dismissedRecommendations]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -273,72 +276,211 @@ export default function Page() {
     setRecommendationError("");
     setRecommendationLoading(true);
 
-    const localPool = [...favorites, ...recent]
-      .filter((track, index, all) => track?.id && all.findIndex(item => item?.id === track.id) === index)
-      .slice(0, 20);
-    const topics = {
-      "Dla Ciebie": "",
-      "Polski rap": "polski rap nowe utwory",
-      "Pop": "pop music hits",
-      "Elektronika": "electronic dance music",
-      "Chill": "chill lofi music",
-      "Nowości": "nowa muzyka 2026",
+    const clean = value => String(value || "")
+      .toLocaleLowerCase("pl-PL")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+    const stopWords = new Set([
+      "official", "video", "music", "audio", "lyrics", "lyric", "visualizer",
+      "officialvideo", "officialaudio", "prod", "production", "records", "record",
+      "feat", "ft", "featuring", "with", "and", "the", "for", "from", "remix",
+      "version", "edit", "mv", "hd", "4k", "topic", "vevo", "youtube", "musicvideo",
+      "obejrzano", "odtworzono", "sluchano", "sluchany", "remastered", "live",
+      "full", "song", "songs", "track", "visual", "audio", "pl", "officially"
+    ]);
+    const tokens = value => clean(value).split(/\s+/).filter(word => word.length > 2 && !stopWords.has(word));
+
+    const artistOf = track => {
+      const rawChannel = String(track?.channel || "").split(",")[0].trim();
+      const channel = rawChannel
+        .replace(/\s*[-–—]\s*topic$/i, "")
+        .replace(/vevo$/i, "")
+        .replace(/official$/i, "")
+        .trim();
+      const generic = !channel || /^(youtube|youtube music|unknown|various artists|topic|official audio|music)$/i.test(channel);
+      if (!generic && channel.length <= 50) return channel;
+
+      const title = String(track?.title || "");
+      const prefix = title.split(/\s[-–—|•]\s/)[0]?.trim();
+      if (prefix && prefix.length >= 2 && prefix.length <= 45 && tokens(prefix).length <= 5) return prefix;
+      return "";
     };
 
-    if (!apiKey) {
-      setRecommendations(localPool.slice(0, 12));
-      setRecommendationError(localPool.length
-        ? "To propozycje z Twojej historii i ulubionych. Dodaj klucz YouTube Data API w Ustawieniach, aby pobierać nowe filmy."
-        : "Dodaj klucz YouTube Data API w Ustawieniach, aby pobrać spersonalizowane propozycje z YouTube.");
+    // Repeated listens count as a signal; favourites deliberately receive extra weight.
+    const signalTracks = [
+      ...favorites.map(track => ({ track, weight: 4 })),
+      ...recent.slice(0, 100).map((track, index) => ({
+        track,
+        weight: Math.max(0.8, 2.3 - index * 0.015)
+      }))
+    ].filter(item => item.track?.id && item.track?.title);
+
+    const uniqueSignalCount = new Set(signalTracks.map(item => item.track.id)).size;
+    const artistScores = new Map();
+    const wordScores = new Map();
+    for (const { track, weight } of signalTracks) {
+      const artist = artistOf(track);
+      if (artist) {
+        const key = clean(artist);
+        if (key && key.length > 1) {
+          const existing = artistScores.get(key) || { name: artist, score: 0 };
+          existing.score += weight;
+          artistScores.set(key, existing);
+        }
+      }
+      const distinctWords = new Set([...tokens(track.title), ...tokens(track.channel)]);
+      for (const word of distinctWords) wordScores.set(word, (wordScores.get(word) || 0) + weight);
+    }
+
+    const topArtists = [...artistScores.values()].sort((a, b) => b.score - a.score).slice(0, 4);
+    const topArtistNames = topArtists.map(item => item.name);
+    const artistWords = new Set(topArtistNames.flatMap(name => tokens(name)));
+    const topTerms = [...wordScores.entries()]
+      .filter(([word]) => !artistWords.has(word))
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([word]) => word);
+    const historyTracks = [...favorites, ...recent.slice(0, 100)].filter(track => track?.id && track?.title);
+    const knownTitles = historyTracks.map(track => new Set(tokens(track.title)));
+    const seenIds = new Set([
+      ...favorites.map(track => track.id),
+      ...recent.map(track => track.id),
+      ...dismissedRecommendations
+    ].filter(Boolean));
+
+    setRecommendationProfile(topArtistNames.length
+      ? `Najczęściej słuchasz: ${topArtistNames.slice(0, 3).join(" · ")}`
+      : "");
+
+    if (uniqueSignalCount < 3 || !topArtistNames.length) {
+      setRecommendations([]);
+      setRecommendationError("Nie chcę zgadywać na ślepo. Odtwórz lub polub co najmniej 3 różne utwory albo zaimportuj historię YouTube Music w zakładce „Ostatnie” — wtedy dopasuję propozycje do Twojego gustu.");
       setRecommendationLoading(false);
       return;
     }
 
+    if (!apiKey) {
+      setRecommendations([]);
+      setRecommendationError("Twój profil muzyczny jest już rozpoznany, ale do wyszukania nowych, dopasowanych utworów potrzebny jest klucz YouTube Data API. Dodaj go w Ustawieniach.");
+      setRecommendationLoading(false);
+      return;
+    }
+
+    const filterQueries = {
+      "Polski rap": "polski rap podobni wykonawcy nowe utwory",
+      "Pop": "pop podobni wykonawcy nowe utwory",
+      "Elektronika": "electronic dance podobni artyści nowe utwory",
+      "Chill": "chill lofi mellow podobni artyści muzyka",
+      "Nowości": `nowe utwory podobni wykonawcy ${new Date().getFullYear()}`,
+    };
+
     try {
-      const seed = favorites[0] || recent[0];
+      const primaryArtist = topArtistNames[0];
+      const secondaryArtist = topArtistNames[1];
+      const favouriteTrack = favorites[0] || recent.find(track => artistOf(track) === primaryArtist) || recent[0];
+      let searchQuery = "";
+
+      if (filter === "Dla Ciebie") {
+        searchQuery = secondaryArtist
+          ? `muzyka podobna do ${primaryArtist} ${secondaryArtist} podobni wykonawcy`
+          : `utwory podobne do ${primaryArtist} muzyka podobni artyści`;
+        if (favouriteTrack?.title && tokens(favouriteTrack.title).length > 1) {
+          searchQuery += ` ${tokens(favouriteTrack.title).slice(0, 3).join(" ")}`;
+        }
+      } else {
+        searchQuery = `${filterQueries[filter] || "muzyka"} w stylu ${primaryArtist}`;
+        if (secondaryArtist) searchQuery += ` ${secondaryArtist}`;
+        if (topTerms.length) searchQuery += ` ${topTerms.slice(0, 2).join(" ")}`;
+      }
+
+      // One search request per refresh. The old relatedToVideoId parameter is no longer supported.
       const url = new URL("https://www.googleapis.com/youtube/v3/search");
       const params = {
         part: "snippet",
         type: "video",
-        maxResults: "20",
+        maxResults: "50",
+        order: "relevance",
+        videoCategoryId: "10",
         regionCode: "PL",
         safeSearch: "moderate",
+        q: searchQuery.replace(/\s+/g, " ").trim().slice(0, 100),
         key: apiKey,
       };
-      if (filter === "Dla Ciebie") {
-        params.q = seed
-          ? `${seed.channel || ""} ${seed.title || "music"} similar music`.replace(/\s+/g, " ").trim().slice(0, 100)
-          : "popular music 2026";
-      } else {
-        params.q = topics[filter] || "popular music";
-      }
       Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
+
       const response = await fetch(url);
       const json = await response.json();
       if (!response.ok || json.error) {
         const reason = json?.error?.errors?.[0]?.reason;
-        if (reason === "quotaExceeded") throw new Error("Dzienny limit YouTube API został wyczerpany. Spróbuj ponownie jutro.");
-        if (response.status === 403) throw new Error("Sprawdź klucz API i uprawnienia YouTube Data API v3 w Ustawieniach.");
-        throw new Error(json?.error?.message || "Nie udało się pobrać rekomendacji.");
+        if (reason === "quotaExceeded") throw new Error("Wykorzystano dzienny limit wyszukiwania YouTube API. Odśwież rekomendacje później.");
+        if (response.status === 403) throw new Error("Sprawdź klucz API i dostęp do YouTube Data API v3 w Ustawieniach.");
+        throw new Error(json?.error?.message || "Nie udało się pobrać dopasowanych rekomendacji.");
       }
-      const seen = new Set([...favorites, ...recent].map(track => track.id));
-      const found = (json.items || [])
-        .filter(item => item.id?.videoId)
-        .map(item => ({
-          id: item.id.videoId,
-          title: item.snippet?.title || "Film z YouTube",
-          channel: item.snippet?.channelTitle || "YouTube",
-          thumbnail: item.snippet?.thumbnails?.medium?.url || item.snippet?.thumbnails?.high?.url || "",
-        }))
-        .filter(track => !seen.has(track.id));
-      setRecommendations(found);
-      if (!found.length) setRecommendationError("Brak nowych propozycji dla tego filtra. Wybierz inną kategorię.");
+
+      const categoryWords = new Set(tokens(filterQueries[filter] || ""));
+      const rejected = /\b(reaction|reacts|podcast|interview|tutorial|how to|gameplay|walkthrough|review|prank|news|commentary|reaction video)\b/i;
+      const candidates = (json.items || [])
+        .filter(item => item.id?.videoId && !seenIds.has(item.id.videoId))
+        .map((item, index) => {
+          const track = {
+            id: item.id.videoId,
+            title: item.snippet?.title || "Utwór z YouTube",
+            channel: item.snippet?.channelTitle || "YouTube",
+            thumbnail: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url || "",
+          };
+          const combinedText = `${track.title} ${track.channel}`;
+          const normalizedTitle = new Set(tokens(track.title));
+          const titleAlreadyHeard = knownTitles.some(previous => {
+            if (!previous.size || !normalizedTitle.size) return false;
+            const intersection = [...normalizedTitle].filter(word => previous.has(word)).length;
+            return intersection / Math.max(normalizedTitle.size, previous.size) >= 0.78;
+          });
+          if (titleAlreadyHeard || rejected.test(track.title)) return null;
+
+          const textKey = clean(combinedText);
+          const artistMatches = topArtistNames.filter(artist => {
+            const artistKey = clean(artist);
+            return artistKey.length > 2 && textKey.includes(artistKey);
+          });
+          const words = new Set([...tokens(track.title), ...tokens(track.channel)]);
+          let profileOverlap = 0;
+          for (const word of words) profileOverlap += wordScores.get(word) || 0;
+          let categoryOverlap = 0;
+          for (const word of words) if (categoryWords.has(word)) categoryOverlap += 1;
+
+          const score =
+            (50 - index) * 0.025 +
+            artistMatches.reduce((sum, artist) => sum + (artistScores.get(clean(artist))?.score || 0) * 0.3, 0) +
+            Math.min(profileOverlap, 12) * 0.16 +
+            categoryOverlap * 0.25;
+          const reason = artistMatches.length
+            ? `Pasuje do: ${artistMatches[0]}`
+            : topArtistNames.length
+              ? `Podobne wyszukiwanie: ${topArtistNames[0]}`
+              : "Dopasowane do Twojej muzyki";
+          return { ...track, recommendationScore: score, recommendationReason: reason, recommendationQuery: searchQuery };
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.recommendationScore - a.recommendationScore)
+        .slice(0, 24);
+
+      setRecommendations(candidates);
+      if (!candidates.length) {
+        setRecommendationError("Nie znalazłem nowych utworów wystarczająco podobnych do Twojej historii. Spróbuj innego filtra lub posłuchaj kilku kolejnych utworów.");
+      }
     } catch (e) {
-      setRecommendations(localPool.slice(0, 12));
+      setRecommendations([]);
       setRecommendationError(e?.message || "Nie udało się pobrać rekomendacji.");
     } finally {
       setRecommendationLoading(false);
     }
+  }
+
+  function dismissRecommendation(track) {
+    setDismissedRecommendations(old => [...new Set([...old, track.id])].slice(-1000));
+    setRecommendations(old => old.filter(item => item.id !== track.id));
   }
 
   const isFavorite = track => favorites.some(x => x.id === track.id);
@@ -417,11 +559,11 @@ export default function Page() {
         {view === "discover" && <div className="moods">{[["Polski rap","polski rap"],["Pop","pop music"],["Rock","rock music"],["Elektronika","electronic music"],["Lo-fi","lofi hip hop"],["Soundtracki","movie soundtrack"]].map(([n, q], i) => <button key={n} className={`mood mood-${i % 4}`} onClick={() => quickSearch(q)}><b>{n}</b><small>Odkrywaj ›</small></button>)}</div>}
         {view === "recommendations" && <div className="recommendations-view">
           <div className="recommendation-intro">
-            <div><b>Odkryj coś nowego</b><p>Propozycje inspirowane Twoją muzyką i wybraną kategorią.</p></div>
+            <div><b>Odkryj coś nowego</b><p>Dobieram muzykę na podstawie powtarzających się wykonawców, Twojej historii i polubień.</p>{recommendationProfile && <small className="recommendation-profile">{recommendationProfile}</small>}</div>
             <button className="recommendation-refresh" onClick={() => void loadRecommendations(recommendationFilter)} disabled={recommendationLoading}>↻ Odśwież</button>
           </div>
           <div className="recommendation-filters" role="group" aria-label="Filtry rekomendacji">
-            {["Dla Ciebie", "Polski rap", "Pop", "Elektronika", "Chill", "Nowości"].map(filter => <button key={filter} className={recommendationFilter === filter ? "recommendation-chip active" : "recommendation-chip"} onClick={() => void loadRecommendations(filter)}>{filter}</button>)}
+            {["Dla Ciebie", "Polski rap", "Pop", "Elektronika", "Chill", "Nowości"].map(filter => <button key={filter} disabled={recommendationLoading} className={recommendationFilter === filter ? "recommendation-chip active" : "recommendation-chip"} onClick={() => void loadRecommendations(filter)}>{filter}</button>)}
           </div>
           {recommendationLoading && <p className="hint">Szukam propozycji w YouTube…</p>}
           {recommendationError && <div className="recommendation-message">{recommendationError}{!apiKey && <button onClick={() => { setDraftKey(apiKey); setView("settings"); }}>Otwórz ustawienia ↗</button>}</div>}
@@ -432,11 +574,12 @@ export default function Page() {
                 <i>▶</i>
               </button>
               <div className="recommendation-card-body">
-                <div className="recommendation-text"><button className="recommendation-title" onClick={() => play(track)} title={track.title}>{track.title}</button><p>{track.channel || "YouTube"}</p></div>
+                <div className="recommendation-text"><button className="recommendation-title" onClick={() => play(track)} title={track.title}>{track.title}</button><p>{track.channel || "YouTube"}</p><small className="recommendation-reason">{track.recommendationReason}</small></div>
                 <div className="recommendation-actions">
                   <button className={isFavorite(track) ? "action liked" : "action"} onClick={() => toggleFavorite(track)} title="Polub">{isFavorite(track) ? "♥" : "♡"}</button>
                   <button className="action" onClick={() => addToPlaylist(track)} title="Dodaj do playlisty">＋</button>
                   <button className="action ext" onClick={() => window.open(`https://www.youtube.com/watch?v=${track.id}`, "_blank", "noopener,noreferrer")} title="Otwórz na YouTube">↗</button>
+                  <button className="action recommendation-dismiss" onClick={() => dismissRecommendation(track)} title="Nie polecaj tego utworu">×</button>
                 </div>
               </div>
             </article>)}
