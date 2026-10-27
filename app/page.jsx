@@ -20,7 +20,11 @@ export default function Page() {
   const [playbackRate, setPlaybackRate] = useState(1);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playQueue, setPlayQueue] = useState([]);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [volume, setVolume] = useState(80);
   const playerFrameRef = useRef(null);
+  const videoStartedRef = useRef(false);
   const [favorites, setFavorites] = useState([]);
   const [playlists, setPlaylists] = useState([]);
   const [recent, setRecent] = useState([]);
@@ -198,10 +202,20 @@ export default function Page() {
   }
 
   function handlePlayerFrameLoad() {
-    // Wait for the embedded player API to finish initializing before applying speed.
+    // Subscribe to YouTube player events so playback state and end-of-track are detected.
     window.setTimeout(() => {
+      sendPlayerCommand("addEventListener", ["onStateChange"]);
+      sendPlayerCommand("addEventListener", ["onReady"]);
       sendPlayerCommand("setPlaybackRate", [Number(playbackRate)]);
+      sendPlayerCommand("setVolume", [Number(volume)]);
+      sendPlayerCommand("getDuration");
+      sendPlayerCommand("getCurrentTime");
     }, 500);
+  }
+
+  function formatPlayerTime(value) {
+    const seconds = Math.max(0, Math.floor(Number(value) || 0));
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
   }
 
   function play(track, queue = []) {
@@ -213,7 +227,10 @@ export default function Page() {
     setPlayQueue(uniqueQueue);
     setCurrent(track);
     setPlayerMode("video");
+    setCurrentTime(0);
+    setDuration(0);
     setIsPlaying(true);
+    videoStartedRef.current = false;
     const playedAt = new Date().toISOString();
     setRecent(old => [
       { ...track, playedAt, historyId: `${track.id}-live-${Date.now()}`, importedFromTakeout: false },
@@ -251,6 +268,60 @@ export default function Page() {
       setIsPlaying(true);
     }
   }
+
+  useEffect(() => {
+    if (!current || playerMode !== "video") return;
+
+    const handlePlayerState = state => {
+      if (state === 1) {
+        videoStartedRef.current = true;
+        setIsPlaying(true);
+      } else if (state === 2) {
+        setIsPlaying(false);
+      } else if (state === 0 && videoStartedRef.current) {
+        // Only advance after the current video actually started and then ended.
+        videoStartedRef.current = false;
+        const index = playQueue.findIndex(track => track.id === current.id);
+        const next = index >= 0 ? playQueue[index + 1] : null;
+        if (next) {
+          play(next, playQueue);
+        } else {
+          setIsPlaying(false);
+          setCurrentTime(duration || 0);
+        }
+      }
+    };
+
+    const onMessage = event => {
+      if (event.source !== playerFrameRef.current?.contentWindow) return;
+      if (!/youtube(-nocookie)?\\.com$/i.test(new URL(event.origin).hostname)) return;
+      let message = event.data;
+      if (typeof message === "string") {
+        try { message = JSON.parse(message); } catch { return; }
+      }
+      if (!message || typeof message !== "object") return;
+      const info = message.info;
+      if (message.event === "infoDelivery" && info && typeof info === "object") {
+        if (Number.isFinite(info.currentTime)) setCurrentTime(Math.max(0, info.currentTime));
+        if (Number.isFinite(info.duration) && info.duration > 0) setDuration(info.duration);
+        if (Number.isFinite(info.volume)) setVolume(info.volume);
+        if (Number.isFinite(info.playerState)) handlePlayerState(info.playerState);
+      } else if (message.event === "onStateChange" && Number.isFinite(message.info)) {
+        handlePlayerState(message.info);
+      }
+    };
+
+    window.addEventListener("message", onMessage);
+    const poll = window.setInterval(() => {
+      sendPlayerCommand("getCurrentTime");
+      sendPlayerCommand("getDuration");
+      sendPlayerCommand("getVolume");
+    }, 1000);
+    return () => {
+      window.removeEventListener("message", onMessage);
+      window.clearInterval(poll);
+    };
+  }, [current, playerMode, playQueue, duration]);
 
   async function importYoutubeHistory(event) {
     const file = event.target.files?.[0];
@@ -756,6 +827,11 @@ export default function Page() {
             <div className="player-cover-overlay"><button onClick={togglePlayback}>▶ Odtwórz wideo</button></div>
           </div> : <div className="video"><iframe ref={playerFrameRef} key={current.id} id="novy-youtube-player" src={`https://www.youtube-nocookie.com/embed/${current.id}?autoplay=1&controls=1&rel=0&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(typeof window !== "undefined" ? window.location.origin : "https://music.novydev.pl")}`} title={current.title} onLoad={handlePlayerFrameLoad} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen /></div>}
           <div className="player-track-meta"><h3>{current.title}</h3><small>{current.channel || "YouTube"}</small></div>
+          <div className={`player-progress ${playerMode === "cover" ? "is-paused" : ""}`}>
+            <div className="player-progress-times"><span>{formatPlayerTime(currentTime)}</span><span>{duration > 0 ? formatPlayerTime(duration) : "--:--"}</span></div>
+            <input type="range" min="0" max={Math.max(duration, 1)} step="1" value={Math.min(currentTime, duration || 1)} disabled={playerMode !== "video" || duration <= 0} onChange={event => { const seconds = Number(event.target.value); setCurrentTime(seconds); sendPlayerCommand("seekTo", [seconds, true]); }} aria-label="Pozycja utworu" />
+          </div>
+          {playQueue[playQueue.findIndex(track => track.id === current.id) + 1] && <div className="player-up-next"><span>DALEJ W KOLEJCE</span><b>{playQueue[playQueue.findIndex(track => track.id === current.id) + 1].title}</b><small>{playQueue[playQueue.findIndex(track => track.id === current.id) + 1].channel || "YouTube"}</small></div>}
           <div className="player-control-dock">
             <div className="player-transport">
               <button className="player-skip" onClick={() => skipTrack(-1)} disabled={playQueue.findIndex(track => track.id === current.id) <= 0} title="Poprzedni utwór" aria-label="Poprzedni utwór">⏮</button>
@@ -766,6 +842,7 @@ export default function Page() {
               <label className="player-speed"><span>Prędkość</span><select value={playbackRate} onChange={event => { const rate = Number(event.target.value); setPlaybackRate(rate); if (playerMode === "video") sendPlayerCommand("setPlaybackRate", [rate]); }} aria-label="Prędkość odtwarzania">
                 <option value={0.5}>0,5×</option><option value={0.75}>0,75×</option><option value={1}>1×</option><option value={1.25}>1,25×</option><option value={1.5}>1,5×</option><option value={1.75}>1,75×</option><option value={2}>2×</option>
               </select></label>
+              <label className="player-volume"><span aria-hidden="true">{volume === 0 ? "🔇" : volume < 45 ? "🔉" : "🔊"}</span><input type="range" min="0" max="100" step="1" value={volume} onChange={event => { const nextVolume = Number(event.target.value); setVolume(nextVolume); if (playerMode === "video") sendPlayerCommand("setVolume", [nextVolume]); }} aria-label="Głośność" /></label>
               <div className="player-secondary-actions">
                 <button onClick={() => toggleFavorite(current)} title={isFavorite(current) ? "Usuń z polubionych" : "Polub"} aria-label="Polub">{isFavorite(current) ? "♥" : "♡"}</button>
                 <button onClick={() => addToPlaylist(current)} title="Dodaj do playlisty" aria-label="Dodaj do playlisty">＋</button>
