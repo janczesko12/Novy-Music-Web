@@ -1211,3 +1211,34 @@ button:active:not(:disabled) { transform: scale(.98); }
   .recommendation-card { animation: none !important; }
   .recommendation-thumbnail img { transition: none !important; }
 }
+
+
+/* Extra feedback for taste-based recommendations */
+.recommendation-profile {
+  display: inline-block;
+  margin-top: 8px;
+  color: #ffb3c0;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.recommendation-reason {
+  display: block;
+  max-width: 100%;
+  margin-top: 6px;
+  overflow: hidden;
+  color: #ffacba;
+  font-size: 8px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recommendation-actions .recommendation-dismiss {
+  color: #9094a5;
+  font-size: 18px;
+  font-weight: 400;
+}
+.recommendation-actions .recommendation-dismiss:hover {
+  color: #fff;
+  background: rgba(255,255,255,.09);
+}
+.recommendation-chip:disabled { opacity: .55; cursor: wait; }
