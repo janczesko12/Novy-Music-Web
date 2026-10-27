@@ -202,7 +202,9 @@ export default function Page() {
   }
 
   function handlePlayerFrameLoad() {
-    // Subscribe to YouTube player events so playback state and end-of-track are detected.
+    // Start the embedded player postMessage handshake before subscribing to its events.
+    const frame = playerFrameRef.current;
+    frame?.contentWindow?.postMessage(JSON.stringify({ event: "listening", id: "novy-youtube-player" }), "https://www.youtube-nocookie.com");
     window.setTimeout(() => {
       sendPlayerCommand("addEventListener", ["onStateChange"]);
       sendPlayerCommand("addEventListener", ["onReady"]);
@@ -827,7 +829,7 @@ export default function Page() {
             <div className="player-cover-overlay"><button onClick={togglePlayback}>▶ Odtwórz wideo</button></div>
           </div> : <div className="video"><iframe ref={playerFrameRef} key={current.id} id="novy-youtube-player" src={`https://www.youtube-nocookie.com/embed/${current.id}?autoplay=1&controls=1&rel=0&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(typeof window !== "undefined" ? window.location.origin : "https://music.novydev.pl")}`} title={current.title} onLoad={handlePlayerFrameLoad} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen /></div>}
           <div className="player-track-meta"><h3>{current.title}</h3><small>{current.channel || "YouTube"}</small></div>
-          <div className={`player-progress ${playerMode === "cover" ? "is-paused" : ""}`}>
+          <div className={`player-progress ${playerMode === "cover" ? "is-paused" : ""}`} style={{ "--player-progress": `${duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0}%` }}>
             <div className="player-progress-times"><span>{formatPlayerTime(currentTime)}</span><span>{duration > 0 ? formatPlayerTime(duration) : "--:--"}</span></div>
             <input type="range" min="0" max={Math.max(duration, 1)} step="1" value={Math.min(currentTime, duration || 1)} disabled={playerMode !== "video" || duration <= 0} onChange={event => { const seconds = Number(event.target.value); setCurrentTime(seconds); sendPlayerCommand("seekTo", [seconds, true]); }} aria-label="Pozycja utworu" />
           </div>
@@ -842,7 +844,7 @@ export default function Page() {
               <label className="player-speed"><span>Prędkość</span><select value={playbackRate} onChange={event => { const rate = Number(event.target.value); setPlaybackRate(rate); if (playerMode === "video") sendPlayerCommand("setPlaybackRate", [rate]); }} aria-label="Prędkość odtwarzania">
                 <option value={0.5}>0,5×</option><option value={0.75}>0,75×</option><option value={1}>1×</option><option value={1.25}>1,25×</option><option value={1.5}>1,5×</option><option value={1.75}>1,75×</option><option value={2}>2×</option>
               </select></label>
-              <label className="player-volume"><span aria-hidden="true">{volume === 0 ? "🔇" : volume < 45 ? "🔉" : "🔊"}</span><input type="range" min="0" max="100" step="1" value={volume} onChange={event => { const nextVolume = Number(event.target.value); setVolume(nextVolume); if (playerMode === "video") sendPlayerCommand("setVolume", [nextVolume]); }} aria-label="Głośność" /></label>
+              <label className="player-volume" style={{ "--volume-progress": `${volume}%` }}><span aria-hidden="true">{volume === 0 ? "🔇" : volume < 45 ? "🔉" : "🔊"}</span><input type="range" min="0" max="100" step="1" value={volume} onChange={event => { const nextVolume = Number(event.target.value); setVolume(nextVolume); if (playerMode === "video") sendPlayerCommand("setVolume", [nextVolume]); }} aria-label="Głośność" /></label>
               <div className="player-secondary-actions">
                 <button onClick={() => toggleFavorite(current)} title={isFavorite(current) ? "Usuń z polubionych" : "Polub"} aria-label="Polub">{isFavorite(current) ? "♥" : "♡"}</button>
                 <button onClick={() => addToPlaylist(current)} title="Dodaj do playlisty" aria-label="Dodaj do playlisty">＋</button>
