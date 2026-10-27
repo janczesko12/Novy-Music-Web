@@ -34,6 +34,7 @@ export default function Page() {
   const [recommendationError, setRecommendationError] = useState("");
   const [recommendationProfile, setRecommendationProfile] = useState("");
   const [dismissedRecommendations, setDismissedRecommendations] = useState([]);
+  const [recommendationAttempted, setRecommendationAttempted] = useState(false);
 
   useEffect(() => {
     const k = localStorage.getItem(KEY) || "";
@@ -45,13 +46,25 @@ export default function Page() {
       setPlaylists(saved.playlists || []);
       setRecent(saved.recent || []);
       setDismissedRecommendations(saved.dismissedRecommendations || []);
+      const savedRecommendations = Array.isArray(saved.recommendations) ? saved.recommendations : [];
+      setRecommendations(savedRecommendations);
+      if (savedRecommendations.length) setRecommendationAttempted(true);
+      setRecommendationProfile(saved.recommendationProfile || "");
     } catch { /* ignore damaged local storage */ }
     setHydrated(true);
   }, []);
 
   useEffect(() => {
-    if (hydrated) localStorage.setItem(STORE, JSON.stringify({ favorites, playlists, recent, dismissedRecommendations }));
-  }, [hydrated, favorites, playlists, recent, dismissedRecommendations]);
+    if (hydrated) localStorage.setItem(STORE, JSON.stringify({
+      favorites, playlists, recent, dismissedRecommendations, recommendations, recommendationProfile
+    }));
+  }, [hydrated, favorites, playlists, recent, dismissedRecommendations, recommendations, recommendationProfile]);
+
+  useEffect(() => {
+    if (!hydrated || view !== "home" || recommendationAttempted) return;
+    setRecommendationAttempted(true);
+    void loadRecommendations("Dla Ciebie");
+  }, [hydrated, view, recommendationAttempted]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -272,6 +285,7 @@ export default function Page() {
     }
   }
   async function loadRecommendations(filter = recommendationFilter) {
+    setRecommendationAttempted(true);
     setRecommendationFilter(filter);
     setRecommendationError("");
     setRecommendationLoading(true);
@@ -560,6 +574,39 @@ export default function Page() {
           <section className="hero"><div><small className="tag">♫ NOVY MUSIC</small><h2>Każdy utwór.<br /><em>Twój własny rytm.</em></h2><p>Wyszukuj muzykę z YouTube, zapisuj ulubione i twórz playlisty.</p><button onClick={() => quickSearch("popular music 2026")}>▶ Odkryj muzykę</button></div><span className="disc">♫</span></section>
           <div className="section"><h2>Na co masz ochotę?</h2><p>Wybierz gatunek, aby wyszukać utwory.</p></div>
           <div className="moods">{[["Polski rap","polski rap"],["Pop","pop hits"],["Elektronika","electronic music"],["Chill","chill music"]].map(([name, q], i) => <button key={name} className={`mood mood-${i}`} onClick={() => quickSearch(q)}><b>{name}</b><small>Odkrywaj muzykę　›</small></button>)}</div>
+          <section className="home-hits">
+            <div className="home-hits-heading">
+              <div>
+                <small className="home-hits-kicker">DOPASOWANE DO TWOJEGO GUSTU</small>
+                <h2>Hity dla Ciebie <span>♫</span></h2>
+                <p>{recommendationProfile || "Na podstawie Twojej historii i polubień"}</p>
+              </div>
+              <div className="home-hits-tools">
+                <button onClick={() => { setView("recommendations"); if (!recommendations.length) void loadRecommendations("Dla Ciebie"); }}>Wszystkie <span>↗</span></button>
+                <button className="home-hits-refresh" aria-label="Odśwież hity" title="Odśwież hity" disabled={recommendationLoading} onClick={() => void loadRecommendations("Dla Ciebie")}>↻</button>
+              </div>
+            </div>
+            {recommendationLoading && !recommendations.length ? <div className="home-hits-row">
+              {[0, 1, 2, 3].map(item => <div className="home-hit-skeleton" key={item}><div /><span /><span /></div>)}
+            </div> : recommendations.length ? <div className="home-hits-row">
+              {recommendations.slice(0, 12).map(track => <article className="home-hit" key={track.historyId || track.id}>
+                <button className="home-hit-cover" onClick={() => play(track)} aria-label={`Odtwórz ${track.title}`}>
+                  {track.thumbnail ? <img src={track.thumbnail} alt="" loading="lazy" /> : <span>♫</span>}
+                  <i>▶</i>
+                </button>
+                <div className="home-hit-details">
+                  <button className="home-hit-title" onClick={() => play(track)} title={track.title}>{track.title}</button>
+                  <p>{track.channel || "YouTube"}</p>
+                  {track.recommendationReason && <small>{track.recommendationReason}</small>}
+                </div>
+                <button className={isFavorite(track) ? "home-hit-like liked" : "home-hit-like"} title={isFavorite(track) ? "Usuń z ulubionych" : "Dodaj do ulubionych"} onClick={() => toggleFavorite(track)}>{isFavorite(track) ? "♥" : "♡"}</button>
+              </article>)}
+            </div> : <div className="home-hits-empty">
+              <span className="home-hits-empty-icon">♫</span>
+              <div><b>Najpierw poznajmy Twój gust</b><p>{recommendationError || "Zaimportuj historię YouTube Music albo posłuchaj kilku utworów, żebyśmy mogli dobrać trafniejsze hity."}</p></div>
+              <button onClick={() => setView("recent")}>Importuj historię <span>›</span></button>
+            </div>}
+          </section>
           <div className="section"><h2>Ostatnio słuchane</h2></div>{recent.length ? trackRows(recent.slice(0, 5)) : <p className="hint">Wyszukaj pierwszy utwór, aby zobaczyć go tutaj.</p>}
           {!apiKey && <div className="setup"><span>⚿</span><div><b>Połącz wyszukiwanie YouTube</b><p>Dodaj klucz API w ustawieniach.</p></div><button onClick={() => setView("settings")}>Skonfiguruj ›</button></div>}
         </>}
