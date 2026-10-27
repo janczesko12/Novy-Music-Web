@@ -952,3 +952,86 @@ a { color: #ff9aa7; }
   .history-import-actions { align-items:flex-start; flex-direction:column; }
   .history-import-button { width:100%; }
 }
+
+
+/* Novy Music motion system */
+html { scroll-behavior: smooth; }
+
+@keyframes nm-enter {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes nm-topbar-enter {
+  from { opacity: 0; transform: translateY(-12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes nm-soft-glow {
+  0%, 100% { opacity: .18; background-position: 0 0; }
+  50% { opacity: .28; background-position: 18px 12px; }
+}
+@keyframes nm-record-turn {
+  from { transform: rotate(-15deg); }
+  to { transform: rotate(345deg); }
+}
+@keyframes nm-float {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -5px; }
+}
+
+.topbar { animation: nm-topbar-enter .55s cubic-bezier(.2,.75,.25,1) both; }
+.sidebar { animation: nm-enter .6s .08s cubic-bezier(.2,.75,.25,1) both; }
+.player { animation: nm-enter .65s .16s cubic-bezier(.2,.75,.25,1) both; }
+.content > h1,
+.content > .eyebrow,
+.content > .hero,
+.content > .section,
+.content > .moods,
+.content > .track-list,
+.content > .history-import,
+.content > .setup,
+.content > .settings,
+.content > .error,
+.content > .yt-account,
+.content > .yt-playlists,
+.content > .yt-library,
+.content > .results-head,
+.content > .library,
+.content > .more,
+.content > footer {
+  animation: nm-enter .5s cubic-bezier(.2,.75,.25,1) both;
+}
+.content > .eyebrow { animation-delay: .03s; }
+.content > h1 { animation-delay: .07s; }
+.content > .hero { animation-delay: .11s; }
+.content > .section { animation-delay: .15s; }
+.content > .moods { animation-delay: .19s; }
+.content > .track-list { animation-delay: .22s; }
+
+.hero::before { animation: nm-soft-glow 9s ease-in-out infinite; }
+.disc { animation: nm-record-turn 26s linear infinite; }
+.track { transition: border-color .2s ease, background .2s ease, transform .2s ease; }
+.track:hover { transform: translateY(-1px); }
+.track:hover .thumb img { transform: scale(1.07); }
+.mood { will-change: transform; }
+.mood:hover { filter: brightness(1.08); }
+.nav, .gear, .logout, .controls button, .action, .history-import-button,
+.login-submit, .search button, .library button, .yt-account button {
+  transition-timing-function: cubic-bezier(.2,.75,.25,1);
+}
+button:active:not(:disabled) { transform: scale(.98); }
+.brand i { transition: transform .25s ease, box-shadow .25s ease; }
+.brand:hover i { transform: rotate(-7deg) scale(1.05); box-shadow: 0 9px 30px rgba(255,78,119,.32); }
+.login-shell { animation: nm-enter .65s cubic-bezier(.2,.75,.25,1) both; }
+.login-page::before { animation: nm-soft-glow 12s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .topbar, .sidebar, .player, .content > *, .hero::before, .disc,
+  .login-shell, .login-page::before {
+    animation: none !important;
+    translate: none !important;
+  }
+  .track, .track:hover, .brand i, .brand:hover i {
+    transform: none !important;
+  }
+}
