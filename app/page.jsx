@@ -196,7 +196,7 @@ export default function Page() {
     const frame = playerFrameRef.current;
     if (!frame?.contentWindow) return;
     frame.contentWindow.postMessage(
-      JSON.stringify({ event: "command", func, args }),
+      JSON.stringify({ event: "command", func, args, id: "novy-youtube-player", channel: "widget" }),
       "https://www.youtube-nocookie.com"
     );
   }
@@ -204,7 +204,7 @@ export default function Page() {
   function handlePlayerFrameLoad() {
     // Start the embedded player postMessage handshake before subscribing to its events.
     const frame = playerFrameRef.current;
-    frame?.contentWindow?.postMessage(JSON.stringify({ event: "listening", id: "novy-youtube-player" }), "https://www.youtube-nocookie.com");
+    frame?.contentWindow?.postMessage(JSON.stringify({ event: "listening", id: "novy-youtube-player", channel: "widget" }), "https://www.youtube-nocookie.com");
     window.setTimeout(() => {
       sendPlayerCommand("addEventListener", ["onStateChange"]);
       sendPlayerCommand("addEventListener", ["onReady"]);
