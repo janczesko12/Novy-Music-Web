@@ -1,43 +1,70 @@
 import { NextResponse } from "next/server";
+import { SITE_SESSION_COOKIE, SITE_SESSION_TTL, verifySiteSessionToken } from "./lib/site-auth";
 
-export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"] };
+export const config = {
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)"],
+};
 
-export function middleware(request) {
-  // Google redirects the browser here after consent. OAuth state is validated in the callback.
-  if (request.nextUrl.pathname === "/api/auth/google/callback") return NextResponse.next();
+function noStoreHeaders(extra = {}) {
+  return { "Cache-Control": "private, no-store, max-age=0", ...extra };
+}
+
+export async function middleware(request) {
+  const { pathname, search } = request.nextUrl;
+
+  // The login screen and its password endpoint must be reachable before a session exists.
+  if (pathname === "/api/site-auth/login" || pathname === "/api/auth/google/callback") {
+    return NextResponse.next();
+  }
 
   const password = process.env.SITE_PASSWORD;
-  if (!password) {
-    return new NextResponse("Private site is not configured.", {
+  const secret = process.env.AUTH_SECRET || password;
+  if (!password || !secret) {
+    if (pathname === "/login") return NextResponse.next();
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Prywatna strona nie jest skonfigurowana." }, {
+        status: 503,
+        headers: noStoreHeaders(),
+      });
+    }
+    return new NextResponse("Novy Music nie jest jeszcze skonfigurowane. Ustaw SITE_PASSWORD w Vercel.", {
       status: 503,
-      headers: { "Cache-Control": "no-store" },
+      headers: noStoreHeaders({ "Content-Type": "text/plain; charset=utf-8" }),
     });
   }
 
-  const authorization = request.headers.get("authorization");
-  if (!authorization || !authorization.startsWith("Basic ")) {
-    return new NextResponse("Novy Music is private.", {
+  const token = request.cookies.get(SITE_SESSION_COOKIE)?.value;
+  const isAuthenticated = await verifySiteSessionToken(token, secret);
+
+  if (pathname === "/login") {
+    if (isAuthenticated) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+    const response = NextResponse.next();
+    response.headers.set("Cache-Control", "no-store");
+    return response;
+  }
+
+  if (isAuthenticated) {
+    const response = NextResponse.next();
+    response.headers.set("Cache-Control", "private, no-store, max-age=0");
+    return response;
+  }
+
+  // API calls receive JSON instead of an HTML redirect, so client fetches can handle auth loss.
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.json({ error: "Sesja wygasła. Zaloguj się ponownie." }, {
       status: 401,
-      headers: {
-        "WWW-Authenticate": 'Basic realm="Novy Music", charset="UTF-8"',
-        "Cache-Control": "no-store",
-      },
+      headers: noStoreHeaders(),
     });
   }
 
-  let decoded = "";
-  try { decoded = atob(authorization.slice(6)); } catch { /* invalid header */ }
-  if (decoded.slice(decoded.indexOf(":") + 1) !== password) {
-    return new NextResponse("Unauthorized.", {
-      status: 401,
-      headers: {
-        "WWW-Authenticate": 'Basic realm="Novy Music", charset="UTF-8"',
-        "Cache-Control": "no-store",
-      },
-    });
-  }
-
-  const response = NextResponse.next();
-  response.headers.set("Cache-Control", "private, no-store, max-age=0");
-  return response;
+  const loginUrl = request.nextUrl.clone();
+  loginUrl.pathname = "/login";
+  loginUrl.search = "";
+  loginUrl.searchParams.set("next", pathname + search);
+  return NextResponse.redirect(loginUrl);
 }
