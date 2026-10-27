@@ -28,6 +28,10 @@ export default function Page() {
   const [ytLoading, setYtLoading] = useState(false);
   const [ytError, setYtError] = useState("");
   const [historyImportMessage, setHistoryImportMessage] = useState("");
+  const [recommendations, setRecommendations] = useState([]);
+  const [recommendationFilter, setRecommendationFilter] = useState("Dla Ciebie");
+  const [recommendationLoading, setRecommendationLoading] = useState(false);
+  const [recommendationError, setRecommendationError] = useState("");
 
   useEffect(() => {
     const k = localStorage.getItem(KEY) || "";
@@ -264,6 +268,78 @@ export default function Page() {
       event.target.value = "";
     }
   }
+  async function loadRecommendations(filter = recommendationFilter) {
+    setRecommendationFilter(filter);
+    setRecommendationError("");
+    setRecommendationLoading(true);
+
+    const localPool = [...favorites, ...recent]
+      .filter((track, index, all) => track?.id && all.findIndex(item => item?.id === track.id) === index)
+      .slice(0, 20);
+    const topics = {
+      "Dla Ciebie": "",
+      "Polski rap": "polski rap nowe utwory",
+      "Pop": "pop music hits",
+      "Elektronika": "electronic dance music",
+      "Chill": "chill lofi music",
+      "Nowości": "nowa muzyka 2026",
+    };
+
+    if (!apiKey) {
+      setRecommendations(localPool.slice(0, 12));
+      setRecommendationError(localPool.length
+        ? "To propozycje z Twojej historii i ulubionych. Dodaj klucz YouTube Data API w Ustawieniach, aby pobierać nowe filmy."
+        : "Dodaj klucz YouTube Data API w Ustawieniach, aby pobrać spersonalizowane propozycje z YouTube.");
+      setRecommendationLoading(false);
+      return;
+    }
+
+    try {
+      const seed = favorites[0] || recent[0];
+      const url = new URL("https://www.googleapis.com/youtube/v3/search");
+      const params = {
+        part: "snippet",
+        type: "video",
+        maxResults: "20",
+        regionCode: "PL",
+        safeSearch: "moderate",
+        key: apiKey,
+      };
+      if (filter === "Dla Ciebie" && seed?.id) {
+        params.relatedToVideoId = seed.id;
+      } else {
+        params.q = topics[filter] || "popular music";
+        if (filter === "Dla Ciebie" && !seed) params.q = "popular music 2026";
+      }
+      Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
+      const response = await fetch(url);
+      const json = await response.json();
+      if (!response.ok || json.error) {
+        const reason = json?.error?.errors?.[0]?.reason;
+        if (reason === "quotaExceeded") throw new Error("Dzienny limit YouTube API został wyczerpany. Spróbuj ponownie jutro.");
+        if (response.status === 403) throw new Error("Sprawdź klucz API i uprawnienia YouTube Data API v3 w Ustawieniach.");
+        throw new Error(json?.error?.message || "Nie udało się pobrać rekomendacji.");
+      }
+      const seen = new Set([...favorites, ...recent].map(track => track.id));
+      const found = (json.items || [])
+        .filter(item => item.id?.videoId)
+        .map(item => ({
+          id: item.id.videoId,
+          title: item.snippet?.title || "Film z YouTube",
+          channel: item.snippet?.channelTitle || "YouTube",
+          thumbnail: item.snippet?.thumbnails?.medium?.url || item.snippet?.thumbnails?.high?.url || "",
+        }))
+        .filter(track => !seen.has(track.id));
+      setRecommendations(found);
+      if (!found.length) setRecommendationError("Brak nowych propozycji dla tego filtra. Wybierz inną kategorię.");
+    } catch (e) {
+      setRecommendations(localPool.slice(0, 12));
+      setRecommendationError(e?.message || "Nie udało się pobrać rekomendacji.");
+    } finally {
+      setRecommendationLoading(false);
+    }
+  }
+
   const isFavorite = track => favorites.some(x => x.id === track.id);
   function toggleFavorite(track) {
     setFavorites(old => isFavorite(track) ? old.filter(x => x.id !== track.id) : [track, ...old]);
@@ -301,7 +377,7 @@ export default function Page() {
 
   const playlist = playlists.find(x => x.id === playlistId);
   const items = view === "liked" ? favorites : view === "recent" ? recent : view === "playlist" ? (playlist?.tracks || []) : results;
-  const pageTitle = ({ home: "Twoja muzyka. Twój rytm.", search: "Wyniki wyszukiwania", liked: "Polubione", recent: "Ostatnio odtwarzane", library: "Biblioteka", settings: "Ustawienia", discover: "Odkrywaj", youtube: selectedYtPlaylist?.title || "Moje YouTube" })[view] || playlist?.name || "Playlista";
+  const pageTitle = ({ home: "Twoja muzyka. Twój rytm.", search: "Wyniki wyszukiwania", liked: "Polubione", recent: "Ostatnio odtwarzane", library: "Biblioteka", settings: "Ustawienia", discover: "Odkrywaj", recommendations: "Rekomendacje", youtube: selectedYtPlaylist?.title || "Moje YouTube" })[view] || playlist?.name || "Playlista";
   const quickSearch = value => { setQuery(value); void searchMusic(value); };
   function trackRows(list) {
     return <div className="track-list">{list.map((track, i) => <div className="track" key={track.historyId || `${track.id}-${i}`}>
@@ -323,7 +399,7 @@ export default function Page() {
 
     <div className="layout">
       <nav className="sidebar"><label>MENU</label>
-        {[ ["home","⌂ Strona główna"], ["discover","◈ Odkrywaj"], ["library","▤ Biblioteka"], ["liked","♥ Polubione"], ["recent","◷ Ostatnie"], ["youtube","▶ Moje YouTube"] ].map(([id, label]) => <button key={id} className={view === id ? "nav on" : "nav"} onClick={() => { setView(id); if (id === "youtube") { setSelectedYtPlaylist(null); setYtItems([]); if (ytAccount) void loadYtPlaylists(); } }}>{label}</button>)}
+        {[ ["home","⌂ Strona główna"], ["recommendations","▦ Rekomendacje"], ["discover","◈ Odkrywaj"], ["library","▤ Biblioteka"], ["liked","♥ Polubione"], ["recent","◷ Ostatnie"], ["youtube","▶ Moje YouTube"] ].map(([id, label]) => <button key={id} className={view === id ? "nav on" : "nav"} onClick={() => { setView(id); if (id === "recommendations") void loadRecommendations("Dla Ciebie"); if (id === "youtube") { setSelectedYtPlaylist(null); setYtItems([]); if (ytAccount) void loadYtPlaylists(); } }}>{label}</button>)}
         <hr /><div className="side-title">PLAYLISTY <button onClick={createPlaylist}>＋</button></div>
         {playlists.map(p => <button key={p.id} className={view === "playlist" && playlistId === p.id ? "nav on" : "nav"} onClick={() => { setPlaylistId(p.id); setView("playlist"); }}>♫ {p.name}</button>)}
         <div className="spacer" /><small>🔒 PRYWATNA PRZESTRZEŃ</small>
@@ -338,6 +414,34 @@ export default function Page() {
           {!apiKey && <div className="setup"><span>⚿</span><div><b>Połącz wyszukiwanie YouTube</b><p>Dodaj klucz API w ustawieniach.</p></div><button onClick={() => setView("settings")}>Skonfiguruj ›</button></div>}
         </>}
         {view === "discover" && <div className="moods">{[["Polski rap","polski rap"],["Pop","pop music"],["Rock","rock music"],["Elektronika","electronic music"],["Lo-fi","lofi hip hop"],["Soundtracki","movie soundtrack"]].map(([n, q], i) => <button key={n} className={`mood mood-${i % 4}`} onClick={() => quickSearch(q)}><b>{n}</b><small>Odkrywaj ›</small></button>)}</div>}
+        {view === "recommendations" && <div className="recommendations-view">
+          <div className="recommendation-intro">
+            <div><b>Odkryj coś nowego</b><p>Propozycje inspirowane Twoją muzyką i wybraną kategorią.</p></div>
+            <button className="recommendation-refresh" onClick={() => void loadRecommendations(recommendationFilter)} disabled={recommendationLoading}>↻ Odśwież</button>
+          </div>
+          <div className="recommendation-filters" role="group" aria-label="Filtry rekomendacji">
+            {["Dla Ciebie", "Polski rap", "Pop", "Elektronika", "Chill", "Nowości"].map(filter => <button key={filter} className={recommendationFilter === filter ? "recommendation-chip active" : "recommendation-chip"} onClick={() => void loadRecommendations(filter)}>{filter}</button>)}
+          </div>
+          {recommendationLoading && <p className="hint">Szukam propozycji w YouTube…</p>}
+          {recommendationError && <div className="recommendation-message">{recommendationError}{!apiKey && <button onClick={() => { setDraftKey(apiKey); setView("settings"); }}>Otwórz ustawienia ↗</button>}</div>}
+          {recommendations.length > 0 && <div className="recommendation-grid">
+            {recommendations.map(track => <article className="recommendation-card" key={track.historyId || track.id}>
+              <button className="recommendation-thumbnail" onClick={() => play(track)} aria-label={`Odtwórz ${track.title}`}>
+                {track.thumbnail ? <img src={track.thumbnail} alt="" loading="lazy" /> : <span>♫</span>}
+                <i>▶</i>
+              </button>
+              <div className="recommendation-card-body">
+                <div className="recommendation-text"><button className="recommendation-title" onClick={() => play(track)} title={track.title}>{track.title}</button><p>{track.channel || "YouTube"}</p></div>
+                <div className="recommendation-actions">
+                  <button className={isFavorite(track) ? "action liked" : "action"} onClick={() => toggleFavorite(track)} title="Polub">{isFavorite(track) ? "♥" : "♡"}</button>
+                  <button className="action" onClick={() => addToPlaylist(track)} title="Dodaj do playlisty">＋</button>
+                  <button className="action ext" onClick={() => window.open(`https://www.youtube.com/watch?v=${track.id}`, "_blank", "noopener,noreferrer")} title="Otwórz na YouTube">↗</button>
+                </div>
+              </div>
+            </article>)}
+          </div>}
+          {!recommendationLoading && !recommendations.length && !recommendationError && <p className="hint">Nie ma jeszcze propozycji. Wybierz filtr, aby spróbować ponownie.</p>}
+        </div>}
         {view === "settings" && <div className="settings">
           <h2>Połącz konto YouTube</h2>
           <p>Połączenie konta pozwoli Novy Music odczytać Twoje playlisty. Autoryzacja odbywa się na stronie Google, a tokeny są przechowywane po stronie serwera w zaszyfrowanym pliku cookie.</p>
