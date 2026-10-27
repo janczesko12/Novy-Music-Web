@@ -52,20 +52,20 @@ export default function LoginPage() {
       <section className="login-shell" aria-label="Logowanie do Novy Music">
         <div className="login-art" aria-hidden="true">
           <div className="login-brand">
-            <span className="login-brand-mark">♫</span>
+            <span className="login-brand-mark" aria-hidden="true"><img src="/novy-music-mark.webp" alt="" /></span>
             <span className="login-brand-name">novy<span>music</span></span>
           </div>
           <p className="login-kicker">YOUR PRIVATE MUSIC SPACE</p>
           <h1 className="login-headline">Twoja muzyka.<br /><span>Twój własny rytm.</span></h1>
           <p className="login-copy">Wróć do ulubionych utworów, odkrywaj nowe brzmienia i miej swoją muzyczną przestrzeń zawsze pod ręką.</p>
-          <div className="login-vinyl-wrap"><div className="login-vinyl" /></div>
+          <div className="login-logo-art-wrap"><img className="login-logo-art" src="/novy-music-logo.webp" alt="Novy Music — logo" /></div>
           <div className="login-badges"><span>♫ Twoja biblioteka</span><span>✦ Bezpieczny dostęp</span><span>▶ YouTube</span></div>
         </div>
 
         <div className="login-panel">
           <div className="login-form-wrap">
             <div className="login-mini-brand">
-              <span className="login-brand-mark">♫</span>
+              <span className="login-brand-mark" aria-hidden="true"><img src="/novy-music-mark.webp" alt="" /></span>
               <span className="login-brand-name">novy<span>music</span></span>
             </div>
             <p className="login-overline">PRYWATNA PRZESTRZEŃ</p>
