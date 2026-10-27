@@ -11,7 +11,7 @@ export const metadata = {
   icons: {
     icon: [
       { url: "/icon.png", sizes: "180x180", type: "image/png" },
-      { url: "/novy-music-mark.webp", sizes: "192x192", type: "image/webp" },
+      { url: "/novy-music-mark.webp", sizes: "160x160", type: "image/webp" },
     ],
     shortcut: "/icon.png",
     apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
