@@ -220,6 +220,7 @@ export default function Page() {
       <button className="brand" onClick={() => setView("home")}><i>♫</i><b>novy<span>music</span></b></button>
       <form className="search" onSubmit={e => { e.preventDefault(); void searchMusic(); }}><span>⌕</span><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Szukaj utworów, wykonawców…" /><button aria-label="Szukaj">⌕</button></form>
       <button className="gear" onClick={() => { setDraftKey(apiKey); setView("settings"); }} title="Ustawienia">⚙</button>
+      <button className="logout" onClick={async () => { try { await fetch("/api/site-auth/logout", { method: "POST" }); } finally { window.location.assign("/login"); } }} title="Wyloguj">↗ <span>Wyloguj</span></button>
     </header>
 
     <div className="layout">
