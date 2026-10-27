@@ -53,7 +53,7 @@ export default function Page() {
       const saved = JSON.parse(localStorage.getItem(STORE) || "{}");
       setFavorites(saved.favorites || []);
       setPlaylists(saved.playlists || []);
-      setRecent(saved.recent || []);
+      setRecent((saved.recent || []).filter(track => !track.importedFromTakeout || track.musicOnly));
       setDismissedRecommendations(saved.dismissedRecommendations || []);
       const savedRecommendations = Array.isArray(saved.recommendations) ? saved.recommendations : [];
       setRecommendations(savedRecommendations);
@@ -378,11 +378,13 @@ export default function Page() {
       }
 
       const markedMusic = usable.filter(item => item.__musicMarked);
-      const selected = markedMusic.length ? markedMusic : usable;
-      const imported = selected
+      if (!markedMusic.length) {
+        throw new Error("Nie znaleziono utworów oznaczonych jako YouTube Music. W Google Takeout wybierz eksport z historią YouTube Music, a nie zwykłą historią oglądania YouTube.");
+      }
+      const imported = markedMusic
         .sort((a, b) => (Date.parse(b.playedAt) || 0) - (Date.parse(a.playedAt) || 0) || b.__index - a.__index)
         .slice(0, 500)
-        .map(({ __musicMarked, __index, ...track }) => track);
+        .map(({ __musicMarked, __index, ...track }) => ({ ...track, musicOnly: true }));
 
       setRecent(old => {
         const keptLocal = old.filter(track => !track.importedFromTakeout);
@@ -813,11 +815,13 @@ export default function Page() {
             <button className={playerMode === "cover" ? "active" : ""} onClick={() => togglePlayerMode("cover")} aria-pressed={playerMode === "cover"}>▧ Okładka</button>
             <button className={playerMode === "video" ? "active" : ""} onClick={() => togglePlayerMode("video")} aria-pressed={playerMode === "video"}>▶ Wideo</button>
           </div>
-          {playerMode === "cover" && <div className="player-cover">
-            {current.thumbnail ? <img src={current.thumbnail} alt={`Okładka: ${current.title}`} /> : <div className="player-cover-fallback">♫</div>}
-          </div>}
-          {playerMode === "cover" && <div className="player-video-cover-label">ODTWARZACZ YOUTUBE · MUZYKA GRA DALEJ</div>}
-          <div className={playerMode === "cover" ? "video player-video-in-cover" : "video"}><iframe ref={playerFrameRef} key={current.id} id="novy-youtube-player" src={`https://www.youtube-nocookie.com/embed/${current.id}?autoplay=1&controls=1&rel=0&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(typeof window !== "undefined" ? window.location.origin : "https://music.novydev.pl")}`} title={current.title} onLoad={handlePlayerFrameLoad} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen /></div>
+          <div className="player-media-stage">
+            {playerMode === "cover" && <div key="cover" className="player-cover">
+              {current.thumbnail ? <img src={current.thumbnail} alt={`Okładka: ${current.title}`} /> : <div className="player-cover-fallback">♫</div>}
+            </div>}
+            {playerMode === "cover" && <div key="cover-label" className="player-video-cover-label">ODTWARZACZ YOUTUBE · MUZYKA GRA DALEJ</div>}
+            <div key="youtube-player" className={playerMode === "cover" ? "video player-video-in-cover" : "video"}><iframe ref={playerFrameRef} key={current.id} id="novy-youtube-player" src={`https://www.youtube-nocookie.com/embed/${current.id}?autoplay=1&controls=1&rel=0&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(typeof window !== "undefined" ? window.location.origin : "https://music.novydev.pl")}`} title={current.title} onLoad={handlePlayerFrameLoad} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen /></div>
+          </div>
           <div className="player-track-meta"><h3>{current.title}</h3><small>{current.channel || "YouTube"}</small></div>
           <div className="player-progress" style={{ "--player-progress": `${duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0}%` }}>
             <div className="player-progress-times"><span>{formatPlayerTime(currentTime)}</span><span>{duration > 0 ? formatPlayerTime(duration) : "--:--"}</span></div>
