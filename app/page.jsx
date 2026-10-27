@@ -165,7 +165,7 @@ export default function Page() {
     try {
       const url = new URL("https://www.googleapis.com/youtube/v3/search");
       const params = {
-        part: "snippet", type: "video", maxResults: "20", q: value.trim(),
+        part: "snippet", type: "video", videoCategoryId: "10", maxResults: "20", q: value.trim(),
         regionCode: "PL", safeSearch: "moderate", key: apiKey,
         ...(pageToken ? { pageToken } : {}),
       };
@@ -249,11 +249,6 @@ export default function Page() {
 
   function togglePlayback() {
     if (!current) return;
-    if (playerMode !== "video") {
-      setPlayerMode("video");
-      setIsPlaying(true);
-      return;
-    }
     const nextPlaying = !isPlaying;
     sendPlayerCommand(nextPlaying ? "playVideo" : "pauseVideo");
     setIsPlaying(nextPlaying);
@@ -261,18 +256,12 @@ export default function Page() {
 
   function togglePlayerMode(mode) {
     if (mode === playerMode) return;
-    if (mode === "cover") {
-      sendPlayerCommand("pauseVideo");
-      setIsPlaying(false);
-      setPlayerMode("cover");
-    } else {
-      setPlayerMode("video");
-      setIsPlaying(true);
-    }
+    // Keep the same visible YouTube iframe mounted in both modes, so audio is not interrupted.
+    setPlayerMode(mode);
   }
 
   useEffect(() => {
-    if (!current || playerMode !== "video") return;
+    if (!current) return;
 
     const handlePlayerState = state => {
       if (state === 1) {
@@ -824,10 +813,11 @@ export default function Page() {
             <button className={playerMode === "cover" ? "active" : ""} onClick={() => togglePlayerMode("cover")} aria-pressed={playerMode === "cover"}>▧ Okładka</button>
             <button className={playerMode === "video" ? "active" : ""} onClick={() => togglePlayerMode("video")} aria-pressed={playerMode === "video"}>▶ Wideo</button>
           </div>
-          {playerMode === "cover" ? <div className="player-cover">
+          {playerMode === "cover" && <div className="player-cover">
             {current.thumbnail ? <img src={current.thumbnail} alt={`Okładka: ${current.title}`} /> : <div className="player-cover-fallback">♫</div>}
-            <div className="player-cover-overlay"><button onClick={togglePlayback}>▶ Odtwórz wideo</button></div>
-          </div> : <div className="video"><iframe ref={playerFrameRef} key={current.id} id="novy-youtube-player" src={`https://www.youtube-nocookie.com/embed/${current.id}?autoplay=1&controls=1&rel=0&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(typeof window !== "undefined" ? window.location.origin : "https://music.novydev.pl")}`} title={current.title} onLoad={handlePlayerFrameLoad} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen /></div>}
+          </div>}
+          {playerMode === "cover" && <div className="player-video-cover-label">ODTWARZACZ YOUTUBE · MUZYKA GRA DALEJ</div>}
+          <div className={playerMode === "cover" ? "video player-video-in-cover" : "video"}><iframe ref={playerFrameRef} key={current.id} id="novy-youtube-player" src={`https://www.youtube-nocookie.com/embed/${current.id}?autoplay=1&controls=1&rel=0&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(typeof window !== "undefined" ? window.location.origin : "https://music.novydev.pl")}`} title={current.title} onLoad={handlePlayerFrameLoad} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen /></div>
           <div className="player-track-meta"><h3>{current.title}</h3><small>{current.channel || "YouTube"}</small></div>
           <div className={`player-progress ${playerMode === "cover" ? "is-paused" : ""}`} style={{ "--player-progress": `${duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0}%` }}>
             <div className="player-progress-times"><span>{formatPlayerTime(currentTime)}</span><span>{duration > 0 ? formatPlayerTime(duration) : "--:--"}</span></div>
@@ -837,7 +827,7 @@ export default function Page() {
           <div className="player-control-dock">
             <div className="player-transport">
               <button className="player-skip" onClick={() => skipTrack(-1)} disabled={playQueue.findIndex(track => track.id === current.id) <= 0} title="Poprzedni utwór" aria-label="Poprzedni utwór">⏮</button>
-              <button className="player-play-pause" onClick={togglePlayback} title={playerMode === "cover" ? "Otwórz wideo i odtwórz" : isPlaying ? "Wstrzymaj" : "Odtwórz"} aria-label={playerMode === "cover" ? "Otwórz wideo i odtwórz" : isPlaying ? "Wstrzymaj" : "Odtwórz"}>{playerMode === "video" && isPlaying ? "Ⅱ" : "▶"}</button>
+              <button className="player-play-pause" onClick={togglePlayback} title={isPlaying ? "Wstrzymaj" : "Odtwórz"} aria-label={isPlaying ? "Wstrzymaj" : "Odtwórz"}>{isPlaying ? "Ⅱ" : "▶"}</button>
               <button className="player-skip" onClick={() => skipTrack(1)} disabled={playQueue.findIndex(track => track.id === current.id) < 0 || playQueue.findIndex(track => track.id === current.id) >= playQueue.length - 1} title="Następny utwór" aria-label="Następny utwór">⏭</button>
             </div>
             <div className="player-control-tools">
@@ -851,7 +841,7 @@ export default function Page() {
               </div>
             </div>
           </div>
-          {playerMode === "cover" && <p className="player-mode-note">Tryb okładki wstrzymuje wideo. Aby odtwarzać utwór, przełącz na „Wideo”.</p>}
+          {playerMode === "cover" && <p className="player-mode-note">Muzyka gra również w trybie okładki. Odtwarzacz YouTube pozostaje widoczny poniżej okładki, aby zachować pełne odtwarzanie i sterowanie.</p>}
           <p className="warning">Oficjalny odtwarzacz YouTube — reklamy mogą się pojawić.</p>
         </> : <div className="empty"><div>♫</div><h3>Muzyka czeka</h3><p>Wyszukaj i wybierz utwór.</p></div>}
         <small className="note">Playlisty zapisane w tej przeglądarce.</small>
