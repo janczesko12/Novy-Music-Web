@@ -1886,3 +1886,347 @@ button:active:not(:disabled) { transform: scale(.98); }
     min-height: 200px;
   }
 }
+
+
+/* Novy Music motion polish — layered entrances, tactile controls and player feedback */
+:root {
+  --motion-snap: cubic-bezier(.16, 1, .3, 1);
+  --motion-soft: cubic-bezier(.22, .68, 0, 1);
+}
+@keyframes nm-ambient-drift {
+  0% { background-position: 0% 0%, 100% 0%, 50% 100%; }
+  50% { background-position: 12% 8%, 88% 12%, 54% 90%; }
+  100% { background-position: 4% 13%, 96% 5%, 45% 100%; }
+}
+@keyframes nm-view-arrive {
+  from { opacity: 0; transform: translate3d(0, 18px, 0) scale(.992); filter: blur(3px); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); filter: blur(0); }
+}
+@keyframes nm-card-arrive {
+  from { opacity: 0; transform: translate3d(0, 14px, 0) scale(.975); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+@keyframes nm-scene-arrive {
+  0% { opacity: 0; transform: translateY(9px) scale(.985); filter: blur(4px); }
+  65% { opacity: 1; filter: blur(0); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+@keyframes nm-cover-breathe {
+  0%, 100% { box-shadow: 0 14px 38px rgba(0,0,0,.28), 0 0 0 rgba(255,102,125,0); }
+  50% { box-shadow: 0 20px 46px rgba(0,0,0,.33), 0 0 26px rgba(255,102,125,.1); }
+}
+@keyframes nm-album-sheen {
+  0% { transform: translateX(-115%) rotate(12deg); opacity: 0; }
+  18% { opacity: .22; }
+  48% { opacity: .08; }
+  100% { transform: translateX(125%) rotate(12deg); opacity: 0; }
+}
+@keyframes nm-control-ring {
+  0% { transform: scale(.9); opacity: .52; }
+  85%, 100% { transform: scale(1.48); opacity: 0; }
+}
+@keyframes nm-equalizer {
+  0%, 100% { transform: scaleY(.38); }
+  50% { transform: scaleY(1); }
+}
+@keyframes nm-wave-glow {
+  0%, 100% { box-shadow: 0 0 0 rgba(255,102,125,0); }
+  50% { box-shadow: 0 0 26px rgba(255,102,125,.12); }
+}
+@keyframes nm-refresh-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes nm-nav-indicator {
+  from { transform: scaleY(.25); opacity: .3; }
+  to { transform: scaleY(1); opacity: 1; }
+}
+@keyframes nm-text-shimmer {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+@keyframes nm-progress-sheen {
+  from { background-position: -150% 0; }
+  to { background-position: 150% 0; }
+}
+
+/* Ambient colour moves slowly without distracting from the music. */
+.app {
+  background-image:
+    radial-gradient(ellipse at 7% 8%, rgba(255,102,125,.065), transparent 31%),
+    radial-gradient(ellipse at 96% 27%, rgba(124,83,255,.055), transparent 30%),
+    radial-gradient(ellipse at 48% 100%, rgba(63,111,210,.035), transparent 37%);
+  background-size: 120% 120%, 120% 120%, 115% 115%;
+  animation: nm-ambient-drift 24s ease-in-out infinite alternate;
+}
+.content > .hero,
+.content > .section,
+.content > .moods,
+.content > .track-list,
+.content > .home-hits,
+.content > .recommendations-view,
+.content > .settings,
+.content > .yt-library,
+.content > .library,
+.content > .history-import,
+.content > .results-head,
+.content > footer {
+  animation: nm-view-arrive .62s var(--motion-snap) both;
+}
+.content > .eyebrow { animation: nm-view-arrive .5s var(--motion-snap) both; }
+.content > h1 { animation: nm-view-arrive .58s .04s var(--motion-snap) both; }
+.content > .hero { animation-delay: .07s; }
+.content > .section { animation-delay: .12s; }
+.content > .moods { animation-delay: .16s; }
+.content > .home-hits { animation-delay: .2s; }
+.content > .track-list { animation-delay: .13s; }
+.content > .recommendations-view,
+.content > .settings,
+.content > .yt-library,
+.content > .library { animation-delay: .09s; }
+
+/* Navigation feels responsive and the selected location gets a soft accent rail. */
+.nav {
+  position: relative;
+  overflow: hidden;
+  transition:
+    color .22s var(--motion-soft),
+    background .22s var(--motion-soft),
+    border-color .22s var(--motion-soft),
+    transform .22s var(--motion-soft),
+    padding-left .22s var(--motion-soft);
+}
+.nav::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 23%;
+  bottom: 23%;
+  width: 3px;
+  border-radius: 0 4px 4px 0;
+  background: linear-gradient(180deg, #ff9b9b, #ff547e);
+  transform: scaleY(.2);
+  opacity: 0;
+  transition: transform .24s var(--motion-snap), opacity .24s ease;
+}
+.nav:hover { padding-left: 15px; }
+.nav.on::before { animation: nm-nav-indicator .35s var(--motion-snap) both; opacity: 1; }
+.nav.on { box-shadow: inset 0 0 0 1px rgba(255,102,125,.035); }
+
+/* Gentle lift and sequential entrance for discovery cards. */
+.mood {
+  transition:
+    transform .32s var(--motion-snap),
+    filter .32s ease,
+    border-color .32s ease,
+    box-shadow .32s ease;
+}
+.mood:hover {
+  transform: translateY(-5px) scale(1.012);
+  border-color: rgba(255,148,166,.27);
+  box-shadow: 0 16px 36px rgba(0,0,0,.2), 0 0 22px rgba(255,102,125,.06);
+}
+.mood:active { transform: translateY(-1px) scale(.99); }
+.mood:nth-child(1) { animation: nm-card-arrive .55s .03s var(--motion-snap) both; }
+.mood:nth-child(2) { animation: nm-card-arrive .55s .09s var(--motion-snap) both; }
+.mood:nth-child(3) { animation: nm-card-arrive .55s .15s var(--motion-snap) both; }
+.mood:nth-child(4) { animation: nm-card-arrive .55s .21s var(--motion-snap) both; }
+
+.track {
+  transition:
+    transform .26s var(--motion-snap),
+    border-color .26s ease,
+    background .26s ease,
+    box-shadow .26s ease;
+}
+.track:hover {
+  transform: translateY(-2px) scale(1.002);
+  border-color: rgba(255,255,255,.14);
+  box-shadow: 0 8px 25px rgba(0,0,0,.12);
+}
+.track-list .track { animation: nm-card-arrive .48s var(--motion-snap) both; }
+.track-list .track:nth-child(1) { animation-delay: .015s; }
+.track-list .track:nth-child(2) { animation-delay: .045s; }
+.track-list .track:nth-child(3) { animation-delay: .075s; }
+.track-list .track:nth-child(4) { animation-delay: .105s; }
+.track-list .track:nth-child(5) { animation-delay: .135s; }
+.track-list .track:nth-child(6) { animation-delay: .165s; }
+.track-list .track:nth-child(n+7) { animation-delay: .19s; }
+.thumb { overflow: hidden; }
+.thumb img { transition: transform .5s var(--motion-snap), filter .4s ease; }
+.thumb:hover img { transform: scale(1.12) rotate(-1.5deg); }
+.action, .search button, .gear, .logout, .home-hits-tools > button,
+.recommendation-refresh, .recommendation-chip, .player-secondary-actions button {
+  transition:
+    transform .22s var(--motion-snap),
+    background .22s ease,
+    border-color .22s ease,
+    color .22s ease,
+    box-shadow .22s ease;
+}
+.action:hover, .player-secondary-actions button:hover {
+  transform: translateY(-2px) scale(1.04);
+  box-shadow: 0 7px 17px rgba(0,0,0,.17);
+}
+.action:active, .player-secondary-actions button:active { transform: scale(.94); }
+.home-hits { position: relative; isolation: isolate; }
+.home-hits::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(120deg, rgba(255,130,154,.1), transparent 38%, rgba(133,101,255,.08), transparent 75%);
+  background-size: 240% 240%;
+  opacity: .45;
+  animation: nm-ambient-drift 16s ease-in-out infinite alternate;
+}
+.home-hit, .recommendation-card {
+  transition: transform .28s var(--motion-snap), filter .28s ease;
+}
+.home-hit:hover, .recommendation-card:hover { transform: translateY(-3px); }
+.home-hit-cover img, .recommendation-thumbnail img {
+  transition: transform .48s var(--motion-snap), filter .35s ease;
+}
+.home-hit-cover:hover img, .recommendation-thumbnail:hover img {
+  transform: scale(1.07);
+  filter: brightness(.78) saturate(1.12);
+}
+.home-hit-cover > i, .recommendation-thumbnail > i {
+  transition: opacity .24s ease, transform .3s var(--motion-snap);
+}
+.home-hit-cover:hover > i, .recommendation-thumbnail:hover > i {
+  transform: scale(1.04);
+}
+.home-hit-like { transition: transform .22s var(--motion-snap), color .22s ease, background .22s ease; }
+.home-hit-like:hover { transform: translateY(-2px) scale(1.08); }
+.home-hits-refresh:hover:not(:disabled) { animation: nm-refresh-spin .65s var(--motion-snap); }
+
+/* Player changes feel like a new track arriving, without moving the whole layout. */
+.player {
+  transition: border-color .32s ease, box-shadow .32s ease, background .32s ease;
+}
+.player.is-playing {
+  border-color: rgba(255,132,154,.17);
+  box-shadow: 0 20px 65px rgba(0,0,0,.24), 0 0 35px rgba(255,102,125,.045);
+}
+.player-kicker { display: inline-flex; align-items: center; gap: 8px; }
+.player-kicker::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #6e7484;
+  transition: background .25s ease, box-shadow .25s ease;
+}
+.player.is-playing .player-kicker::before {
+  background: #ff7c97;
+  box-shadow: 0 0 0 4px rgba(255,124,151,.1), 0 0 13px rgba(255,124,151,.65);
+  animation: nm-wave-glow 2.2s ease-in-out infinite;
+}
+.player-media-stage { animation: nm-scene-arrive .56s var(--motion-snap) both; }
+.player-cover {
+  position: relative;
+  isolation: isolate;
+  transform-origin: center center;
+  animation: nm-scene-arrive .65s var(--motion-snap) both, nm-cover-breathe 7s 1s ease-in-out infinite;
+}
+.player-cover::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: -25%;
+  bottom: -25%;
+  left: 0;
+  width: 42%;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.19), transparent);
+  filter: blur(5px);
+  animation: nm-album-sheen 8s 1.5s ease-in-out infinite;
+}
+.player-track-meta { animation: nm-view-arrive .42s .04s var(--motion-snap) both; }
+.player-track-meta h3 { transition: color .24s ease; }
+.player.is-playing .player-track-meta h3 { color: #fff; }
+.player-video-cover-label { animation: nm-view-arrive .42s .07s var(--motion-snap) both; }
+.player-control-dock { animation: nm-view-arrive .5s .09s var(--motion-snap) both; }
+.player-up-next { transition: border-color .25s ease, background .25s ease, transform .25s var(--motion-snap); }
+.player-up-next:hover { transform: translateY(-2px); border-color: rgba(255,132,154,.2); }
+.player-transport .player-skip:hover:not(:disabled) {
+  color: #ff9eaf;
+  background: rgba(255,132,154,.08);
+  transform: translateY(-2px) scale(1.06);
+}
+.player-transport .player-play-pause { position: relative; isolation: isolate; }
+.player-transport .player-play-pause::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  z-index: -1;
+  border: 1px solid rgba(255,132,154,.58);
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+}
+.player-transport .player-play-pause.is-playing::after {
+  animation: nm-control-ring 2s ease-out infinite;
+}
+.player-transport .player-play-pause.is-playing {
+  box-shadow: 0 8px 25px rgba(255,74,124,.2), inset 0 1px 0 rgba(255,255,255,.18);
+}
+.player-progress > input[type="range"] { transition: filter .2s ease, height .2s ease; }
+.player-progress:hover > input[type="range"] { height: 6px; filter: brightness(1.12); }
+.player-mode-switch button { transition: background .24s ease, color .24s ease, transform .24s var(--motion-snap), border-color .24s ease; }
+.player-mode-switch button.active { box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 4px 16px rgba(255,102,125,.06); }
+.player-mode-switch button:active { transform: scale(.975); }
+.player-speed select, .player-volume input { transition: border-color .2s ease, filter .2s ease; }
+.player-speed select:focus, .player-volume input:focus-visible { filter: brightness(1.14); }
+.player.is-playing .player-control-dock { animation: nm-view-arrive .5s .09s var(--motion-snap) both, nm-wave-glow 5s .4s ease-in-out infinite; }
+
+/* Respect reduced-motion preferences across the whole interface. */
+@media (prefers-reduced-motion: reduce) {
+  .app,
+  .app::before,
+  .app::after,
+  .content > *,
+  .content > .hero,
+  .content > .section,
+  .content > .moods,
+  .content > .track-list,
+  .content > .home-hits,
+  .content > .recommendations-view,
+  .content > .settings,
+  .content > .yt-library,
+  .content > .library,
+  .content > .history-import,
+  .content > .results-head,
+  .content > footer,
+  .mood,
+  .mood:nth-child(n),
+  .track-list .track,
+  .track-list .track:nth-child(n),
+  .home-hit,
+  .recommendation-card,
+  .player-media-stage,
+  .player-cover,
+  .player-cover::after,
+  .player-track-meta,
+  .player-video-cover-label,
+  .player-control-dock,
+  .player.is-playing .player-kicker::before,
+  .player-transport .player-play-pause.is-playing::after,
+  .home-hits::after,
+  .home-hits-refresh:hover:not(:disabled),
+  .nav.on::before {
+    animation: none !important;
+  }
+  .nav, .mood, .track, .track:hover, .home-hit, .home-hit:hover,
+  .recommendation-card, .recommendation-card:hover,
+  .player-up-next, .player-up-next:hover,
+  .player-transport button, .player-cover, .thumb img,
+  .home-hit-cover img, .recommendation-thumbnail img,
+  .player-progress > input[type="range"] {
+    transition: none !important;
+    transform: none !important;
+  }
+}
