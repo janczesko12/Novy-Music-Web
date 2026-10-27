@@ -809,20 +809,20 @@ export default function Page() {
         <footer>Novy Music · YouTube Data API · Oficjalny odtwarzacz YouTube</footer>
       </section>
 
-      <aside className="player"><small className="player-kicker">TERAZ ODTWARZANE</small><h2>Odtwarzacz</h2>
+      <aside className={`player ${isPlaying ? "is-playing" : "is-paused"}`}><small className="player-kicker">TERAZ ODTWARZANE</small><h2>Odtwarzacz</h2>
         {current ? <>
           <div className="player-mode-switch" role="group" aria-label="Widok odtwarzacza">
             <button className={playerMode === "cover" ? "active" : ""} onClick={() => togglePlayerMode("cover")} aria-pressed={playerMode === "cover"}>▧ Okładka</button>
             <button className={playerMode === "video" ? "active" : ""} onClick={() => togglePlayerMode("video")} aria-pressed={playerMode === "video"}>▶ Wideo</button>
           </div>
-          <div className="player-media-stage">
+          <div className="player-media-stage" key={current.id}>
             {playerMode === "cover" && <div key="cover" className="player-cover">
               {current.thumbnail ? <img src={current.thumbnail} alt={`Okładka: ${current.title}`} /> : <div className="player-cover-fallback">♫</div>}
             </div>}
             {playerMode === "cover" && <div key="cover-label" className="player-video-cover-label">ODTWARZACZ YOUTUBE · MUZYKA GRA DALEJ</div>}
             <div key="youtube-player" className={playerMode === "cover" ? "video player-video-in-cover" : "video"}><iframe ref={playerFrameRef} key={current.id} id="novy-youtube-player" src={`https://www.youtube-nocookie.com/embed/${current.id}?autoplay=1&controls=1&rel=0&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(typeof window !== "undefined" ? window.location.origin : "https://music.novydev.pl")}`} title={current.title} onLoad={handlePlayerFrameLoad} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen /></div>
           </div>
-          <div className="player-track-meta"><h3>{current.title}</h3><small>{current.channel || "YouTube"}</small></div>
+          <div className="player-track-meta" key={`meta-${current.id}`}><h3>{current.title}</h3><small>{current.channel || "YouTube"}</small></div>
           <div className="player-progress" style={{ "--player-progress": `${duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0}%` }}>
             <div className="player-progress-times"><span>{formatPlayerTime(currentTime)}</span><span>{duration > 0 ? formatPlayerTime(duration) : "--:--"}</span></div>
             <input type="range" min="0" max={Math.max(duration, 1)} step="1" value={Math.min(currentTime, duration || 1)} disabled={duration <= 0} onChange={event => { const seconds = Number(event.target.value); setCurrentTime(seconds); sendPlayerCommand("seekTo", [seconds, true]); }} aria-label="Pozycja utworu" />
@@ -831,7 +831,7 @@ export default function Page() {
           <div className="player-control-dock">
             <div className="player-transport">
               <button className="player-skip" onClick={() => skipTrack(-1)} disabled={playQueue.findIndex(track => track.id === current.id) <= 0} title="Poprzedni utwór" aria-label="Poprzedni utwór">⏮</button>
-              <button className="player-play-pause" onClick={togglePlayback} title={isPlaying ? "Wstrzymaj" : "Odtwórz"} aria-label={isPlaying ? "Wstrzymaj" : "Odtwórz"}>{isPlaying ? "Ⅱ" : "▶"}</button>
+              <button className={`player-play-pause ${isPlaying ? "is-playing" : ""}`} onClick={togglePlayback} title={isPlaying ? "Wstrzymaj" : "Odtwórz"} aria-label={isPlaying ? "Wstrzymaj" : "Odtwórz"}>{isPlaying ? "Ⅱ" : "▶"}</button>
               <button className="player-skip" onClick={() => skipTrack(1)} disabled={playQueue.findIndex(track => track.id === current.id) < 0 || playQueue.findIndex(track => track.id === current.id) >= playQueue.length - 1} title="Następny utwór" aria-label="Następny utwór">⏭</button>
             </div>
             <div className="player-control-tools">
