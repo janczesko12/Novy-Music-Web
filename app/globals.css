@@ -1851,3 +1851,38 @@ button:active:not(:disabled) { transform: scale(.98); }
 @media (prefers-reduced-motion: reduce) {
   .player-progress > input[type="range"]::-webkit-slider-thumb { transition: none !important; }
 }
+
+
+/* The cover view keeps the official YouTube player visible and playing underneath. */
+.player-video-cover-label {
+  margin: 13px 0 7px;
+  color: #ff9eaf;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 1.25px;
+}
+.player-video-in-cover {
+  width: 100%;
+  min-height: 200px;
+  aspect-ratio: 16 / 9;
+  margin-bottom: 5px;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #08090d;
+}
+.player-video-in-cover iframe {
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+  display: block;
+}
+.player-mode-note {
+  margin-top: 7px;
+}
+@media (max-width: 700px) {
+  .player-video-in-cover,
+  .player-video-in-cover iframe {
+    min-height: 200px;
+  }
+}
