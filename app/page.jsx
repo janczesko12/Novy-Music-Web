@@ -305,11 +305,12 @@ export default function Page() {
         safeSearch: "moderate",
         key: apiKey,
       };
-      if (filter === "Dla Ciebie" && seed?.id) {
-        params.relatedToVideoId = seed.id;
+      if (filter === "Dla Ciebie") {
+        params.q = seed
+          ? `${seed.channel || ""} ${seed.title || "music"} similar music`.replace(/\\s+/g, " ").trim().slice(0, 100)
+          : "popular music 2026";
       } else {
         params.q = topics[filter] || "popular music";
-        if (filter === "Dla Ciebie" && !seed) params.q = "popular music 2026";
       }
       Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
       const response = await fetch(url);
