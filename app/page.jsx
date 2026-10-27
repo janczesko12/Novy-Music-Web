@@ -220,7 +220,7 @@ export default function Page() {
     return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
   }
 
-  function play(track, queue = []) {
+  function play(track, queue = [], mode = "video") {
     const sourceQueue = Array.isArray(queue) && queue.length ? queue : [track];
     const uniqueQueue = sourceQueue.filter((item, index, all) =>
       item?.id && all.findIndex(candidate => candidate?.id === item.id) === index
@@ -228,7 +228,7 @@ export default function Page() {
     if (!uniqueQueue.some(item => item.id === track.id)) uniqueQueue.unshift(track);
     setPlayQueue(uniqueQueue);
     setCurrent(track);
-    setPlayerMode("video");
+    setPlayerMode(mode);
     setCurrentTime(0);
     setDuration(0);
     setIsPlaying(true);
@@ -244,7 +244,7 @@ export default function Page() {
     if (!current || !playQueue.length) return;
     const index = playQueue.findIndex(track => track.id === current.id);
     const next = playQueue[index + direction];
-    if (next) play(next, playQueue);
+    if (next) play(next, playQueue, playerMode);
   }
 
   function togglePlayback() {
@@ -275,7 +275,7 @@ export default function Page() {
         const index = playQueue.findIndex(track => track.id === current.id);
         const next = index >= 0 ? playQueue[index + 1] : null;
         if (next) {
-          play(next, playQueue);
+          play(next, playQueue, playerMode);
         } else {
           setIsPlaying(false);
           setCurrentTime(duration || 0);
@@ -819,9 +819,9 @@ export default function Page() {
           {playerMode === "cover" && <div className="player-video-cover-label">ODTWARZACZ YOUTUBE · MUZYKA GRA DALEJ</div>}
           <div className={playerMode === "cover" ? "video player-video-in-cover" : "video"}><iframe ref={playerFrameRef} key={current.id} id="novy-youtube-player" src={`https://www.youtube-nocookie.com/embed/${current.id}?autoplay=1&controls=1&rel=0&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(typeof window !== "undefined" ? window.location.origin : "https://music.novydev.pl")}`} title={current.title} onLoad={handlePlayerFrameLoad} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen /></div>
           <div className="player-track-meta"><h3>{current.title}</h3><small>{current.channel || "YouTube"}</small></div>
-          <div className={`player-progress ${playerMode === "cover" ? "is-paused" : ""}`} style={{ "--player-progress": `${duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0}%` }}>
+          <div className="player-progress" style={{ "--player-progress": `${duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0}%` }}>
             <div className="player-progress-times"><span>{formatPlayerTime(currentTime)}</span><span>{duration > 0 ? formatPlayerTime(duration) : "--:--"}</span></div>
-            <input type="range" min="0" max={Math.max(duration, 1)} step="1" value={Math.min(currentTime, duration || 1)} disabled={playerMode !== "video" || duration <= 0} onChange={event => { const seconds = Number(event.target.value); setCurrentTime(seconds); sendPlayerCommand("seekTo", [seconds, true]); }} aria-label="Pozycja utworu" />
+            <input type="range" min="0" max={Math.max(duration, 1)} step="1" value={Math.min(currentTime, duration || 1)} disabled={duration <= 0} onChange={event => { const seconds = Number(event.target.value); setCurrentTime(seconds); sendPlayerCommand("seekTo", [seconds, true]); }} aria-label="Pozycja utworu" />
           </div>
           {playQueue[playQueue.findIndex(track => track.id === current.id) + 1] && <div className="player-up-next"><span>DALEJ W KOLEJCE</span><b>{playQueue[playQueue.findIndex(track => track.id === current.id) + 1].title}</b><small>{playQueue[playQueue.findIndex(track => track.id === current.id) + 1].channel || "YouTube"}</small></div>}
           <div className="player-control-dock">
@@ -831,10 +831,10 @@ export default function Page() {
               <button className="player-skip" onClick={() => skipTrack(1)} disabled={playQueue.findIndex(track => track.id === current.id) < 0 || playQueue.findIndex(track => track.id === current.id) >= playQueue.length - 1} title="Następny utwór" aria-label="Następny utwór">⏭</button>
             </div>
             <div className="player-control-tools">
-              <label className="player-speed"><span>Prędkość</span><select value={playbackRate} onChange={event => { const rate = Number(event.target.value); setPlaybackRate(rate); if (playerMode === "video") sendPlayerCommand("setPlaybackRate", [rate]); }} aria-label="Prędkość odtwarzania">
+              <label className="player-speed"><span>Prędkość</span><select value={playbackRate} onChange={event => { const rate = Number(event.target.value); setPlaybackRate(rate); sendPlayerCommand("setPlaybackRate", [rate]); }} aria-label="Prędkość odtwarzania">
                 <option value={0.5}>0,5×</option><option value={0.75}>0,75×</option><option value={1}>1×</option><option value={1.25}>1,25×</option><option value={1.5}>1,5×</option><option value={1.75}>1,75×</option><option value={2}>2×</option>
               </select></label>
-              <label className="player-volume" style={{ "--volume-progress": `${volume}%` }}><span aria-hidden="true">{volume === 0 ? "🔇" : volume < 45 ? "🔉" : "🔊"}</span><input type="range" min="0" max="100" step="1" value={volume} onChange={event => { const nextVolume = Number(event.target.value); setVolume(nextVolume); if (playerMode === "video") sendPlayerCommand("setVolume", [nextVolume]); }} aria-label="Głośność" /></label>
+              <label className="player-volume" style={{ "--volume-progress": `${volume}%` }}><span aria-hidden="true">{volume === 0 ? "🔇" : volume < 45 ? "🔉" : "🔊"}</span><input type="range" min="0" max="100" step="1" value={volume} onChange={event => { const nextVolume = Number(event.target.value); setVolume(nextVolume); sendPlayerCommand("setVolume", [nextVolume]); }} aria-label="Głośność" /></label>
               <div className="player-secondary-actions">
                 <button onClick={() => toggleFavorite(current)} title={isFavorite(current) ? "Usuń z polubionych" : "Polub"} aria-label="Polub">{isFavorite(current) ? "♥" : "♡"}</button>
                 <button onClick={() => addToPlaylist(current)} title="Dodaj do playlisty" aria-label="Dodaj do playlisty">＋</button>
