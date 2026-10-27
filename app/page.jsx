@@ -299,7 +299,7 @@ export default function Page() {
         .replace(/vevo$/i, "")
         .replace(/official$/i, "")
         .trim();
-      const generic = !channel || /^(youtube|youtube music|unknown|various artists|topic|official audio|music)$/i.test(channel);
+      const generic = !channel || /^(youtube|youtube music|unknown|various artists|topic|official audio|music)$/i.test(channel) || /sony music|warner music|universal music|music group|spinnin.? records|worldstar|music india/i.test(channel);
       if (!generic && channel.length <= 50) return channel;
 
       const title = String(track?.title || "");
@@ -383,14 +383,12 @@ export default function Page() {
       let searchQuery = "";
 
       if (filter === "Dla Ciebie") {
-        searchQuery = secondaryArtist
-          ? `muzyka podobna do ${primaryArtist} ${secondaryArtist} podobni wykonawcy`
-          : `utwory podobne do ${primaryArtist} muzyka podobni artyści`;
-        if (favouriteTrack?.title && tokens(favouriteTrack.title).length > 1) {
-          searchQuery += ` ${tokens(favouriteTrack.title).slice(0, 3).join(" ")}`;
-        }
+        const titleHint = favouriteTrack?.title ? tokens(favouriteTrack.title).slice(0, 4).join(" ") : "";
+        searchQuery = titleHint.length > 2
+          ? `songs like ${titleHint} by ${primaryArtist} similar artists`
+          : `music similar to ${primaryArtist} ${secondaryArtist ? `and ${secondaryArtist}` : ""} similar artists`;
       } else {
-        searchQuery = `${filterQueries[filter] || "muzyka"} w stylu ${primaryArtist}`;
+        searchQuery = `${filterQueries[filter] || "music"} similar to ${primaryArtist}`;
         if (secondaryArtist) searchQuery += ` ${secondaryArtist}`;
         if (topTerms.length) searchQuery += ` ${topTerms.slice(0, 2).join(" ")}`;
       }
@@ -452,7 +450,7 @@ export default function Page() {
 
           const score =
             (50 - index) * 0.025 +
-            artistMatches.reduce((sum, artist) => sum + (artistScores.get(clean(artist))?.score || 0) * 0.3, 0) +
+            artistMatches.reduce((sum, artist) => sum + Math.min(artistScores.get(clean(artist))?.score || 0, 10) * 0.12, 0) +
             Math.min(profileOverlap, 12) * 0.16 +
             categoryOverlap * 0.25;
           const reason = artistMatches.length
@@ -463,11 +461,20 @@ export default function Page() {
           return { ...track, recommendationScore: score, recommendationReason: reason, recommendationQuery: searchQuery };
         })
         .filter(Boolean)
-        .sort((a, b) => b.recommendationScore - a.recommendationScore)
-        .slice(0, 24);
+        .sort((a, b) => b.recommendationScore - a.recommendationScore);
 
-      setRecommendations(candidates);
-      if (!candidates.length) {
+      // Keep the feed varied: don't let one channel occupy every recommendation slot.
+      const channelCounts = new Map();
+      const diversified = candidates.filter(track => {
+        const key = clean(track.channel || "unknown") || "unknown";
+        const count = channelCounts.get(key) || 0;
+        if (count >= 3) return false;
+        channelCounts.set(key, count + 1);
+        return true;
+      }).slice(0, 24);
+
+      setRecommendations(diversified);
+      if (!diversified.length) {
         setRecommendationError("Nie znalazłem nowych utworów wystarczająco podobnych do Twojej historii. Spróbuj innego filtra lub posłuchaj kilku kolejnych utworów.");
       }
     } catch (e) {
