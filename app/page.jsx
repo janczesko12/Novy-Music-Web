@@ -307,7 +307,7 @@ export default function Page() {
       };
       if (filter === "Dla Ciebie") {
         params.q = seed
-          ? `${seed.channel || ""} ${seed.title || "music"} similar music`.replace(/\\s+/g, " ").trim().slice(0, 100)
+          ? `${seed.channel || ""} ${seed.title || "music"} similar music`.replace(/\s+/g, " ").trim().slice(0, 100)
           : "popular music 2026";
       } else {
         params.q = topics[filter] || "popular music";
