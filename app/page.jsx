@@ -294,7 +294,7 @@ export default function Page() {
 
     const onMessage = event => {
       if (event.source !== playerFrameRef.current?.contentWindow) return;
-      if (!/youtube(-nocookie)?\\.com$/i.test(new URL(event.origin).hostname)) return;
+      if (!/youtube(-nocookie)?\.com$/i.test(new URL(event.origin).hostname)) return;
       let message = event.data;
       if (typeof message === "string") {
         try { message = JSON.parse(message); } catch { return; }
